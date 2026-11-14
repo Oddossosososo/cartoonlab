@@ -5,7 +5,7 @@
   const state = {
     title: 'Untitled story', tab: 'characters', selected: 0, playing: false, vip: localStorage.getItem('cartoonlab-vip') === 'true',
     elapsed: 0, lastFrame: 0, audioUrl: null, audioName: '', audioBuffer:null, audioTracks:[], kokoro: null, kokoroLoading: false, kokoroPromise: null, voiceBuffer: null, voiceText: '', voiceName: 'af_heart', voiceSpeed: 1, voiceBufferSpeed: 1, audioContext: null, voiceSource: null, analyser: null, analyserData: null, lipSync: { active:false, startedAt:0, utterance:null },
-    character: { name: 'Bloop', color: '#ff9cba', expression: 'happy', x: 640, size: 1, speech: 'What if...?', ttsText: 'What if...?' },
+    character: { name: 'Bloop', color: '#ff9cba', expression: 'happy', x: 640, size: 1, speech: 'What if...?', ttsText: 'What if...?' }, extraCharacters: [],
     scenes: [{ name: 'Opening scene', duration: 6, background: 'sunset', title: 'WHAT IF...?', subtitle: 'A tiny idea. A BIG adventure.', motion: 'bounce' }]
   };
   const PROJECT_KEY = 'cartoonlab-project-v1';
@@ -90,7 +90,7 @@
     }
   }
   function projectSnapshot(){
-    return {version:1,title:state.title,character:state.character,scenes:state.scenes,selected:state.selected,elapsed:state.elapsed,vip:state.vip,voiceSpeed:state.voiceSpeed,voiceName:state.voiceName};
+    return {version:1,title:state.title,character:state.character,extraCharacters:state.extraCharacters,scenes:state.scenes,selected:state.selected,elapsed:state.elapsed,vip:state.vip,voiceSpeed:state.voiceSpeed,voiceName:state.voiceName};
   }
   function saveProject(){
     try{
@@ -115,7 +115,7 @@
       if(!raw)return;
       const saved=JSON.parse(raw);
       if(!saved || saved.version!==1 || !Array.isArray(saved.scenes) || !saved.scenes.length)return;
-      if(saved.character && typeof saved.character==='object'){state.character={...state.character,...saved.character};if(typeof saved.character.ttsText!=='string')state.character.ttsText=String(saved.character.speech||'');}
+      if(saved.character && typeof saved.character==='object'){state.character={...state.character,...saved.character};if(typeof saved.character.ttsText!=='string')state.character.ttsText=String(saved.character.speech||'');}if(Array.isArray(saved.extraCharacters))state.extraCharacters=saved.extraCharacters.filter(c=>c&&typeof c==='object').slice(0,20);
       state.scenes=saved.scenes.filter(s=>s && typeof s==='object' && Number.isFinite(Number(s.duration)) && Number(s.duration)>0);
       if(!state.scenes.length)state.scenes=[{name:'Opening scene',duration:3,background:'sunset',title:'WHAT IF...?',subtitle:'A tiny idea. A BIG adventure.',motion:'bounce'}];
       state.title=typeof saved.title==='string' && saved.title ? saved.title : state.title;
@@ -453,7 +453,7 @@
     const has3D=!!(window.CartoonLab3D&&window.CartoonLab3D.ready&&window.CartoonLab3D.render(state.elapsed,scene));
     if(has3D&&window.CartoonLab3D.canvas&&(scene.layers?.background!==false))ctx.drawImage(window.CartoonLab3D.canvas,0,0,1280,720);
     const layers=scene.layers||{};
-    if(scene.houseRoom){if(layers.background!==false&&!has3D)drawHouseRoom(scene,state.elapsed);if(layers.character!==false)drawCharacter(studioCharacter(scene,activeTime.local),state.elapsed,scene);if(scene.title){ctx.save();ctx.textAlign='center';ctx.fillStyle='#fff';ctx.shadowColor='#0008';ctx.shadowBlur=12;ctx.font='800 42px Space Grotesk';ctx.fillText(scene.title,640,72);ctx.restore();}if(scene.subtitle){ctx.save();ctx.textAlign='center';ctx.fillStyle='#fff';ctx.font='500 20px DM Sans';ctx.fillText(scene.subtitle,640,108);ctx.restore();}}
+    if(scene.houseRoom){if(layers.background!==false&&!has3D)drawHouseRoom(scene,state.elapsed);if(layers.character!==false){drawCharacter(studioCharacter(scene,activeTime.local),state.elapsed,scene);state.extraCharacters.forEach(c=>drawCharacter(c,state.elapsed,scene));}if(scene.title){ctx.save();ctx.textAlign='center';ctx.fillStyle='#fff';ctx.shadowColor='#0008';ctx.shadowBlur=12;ctx.font='800 42px Space Grotesk';ctx.fillText(scene.title,640,72);ctx.restore();}if(scene.subtitle){ctx.save();ctx.textAlign='center';ctx.fillStyle='#fff';ctx.font='500 20px DM Sans';ctx.fillText(scene.subtitle,640,108);ctx.restore();}}
     else if(layers.background!==false&&!has3D){const grad=ctx.createLinearGradient(0,0,0,720);grad.addColorStop(0,bg[0]);grad.addColorStop(.65,bg[1]);grad.addColorStop(1,bg[2]);ctx.fillStyle=grad;ctx.fillRect(0,0,1280,720);}
     if(scene.houseRoom){if(layers.counter!==false)drawCounter(scene,activeTime.local);return;}
     const t=state.elapsed, camera=scene.cameraMotion||'none';
@@ -484,7 +484,7 @@
     if(scene.title){ctx.textAlign='center';ctx.fillStyle='#fff';ctx.shadowColor='#241a3a88';ctx.shadowBlur=20;ctx.font='800 62px Space Grotesk';ctx.fillText(scene.title,640,100);ctx.shadowBlur=0;}
     if(scene.subtitle){ctx.textAlign='center';ctx.fillStyle='#fff';ctx.globalAlpha=.85;ctx.font='500 22px DM Sans';ctx.fillText(scene.subtitle,640,137);ctx.globalAlpha=1;}
     if(state.onionSkin&&!state.playing){const prev=(scene.keyframes||[]).filter(k=>k.time<activeTime.local).slice(-1)[0];if(prev){ctx.save();ctx.globalAlpha=.18;drawCharacter({...state.character,...prev},state.elapsed-.08,scene);ctx.restore();}}
-    if(layers.character!==false)drawCharacter(studioCharacter(scene,activeTime.local),state.elapsed,scene);
+    if(layers.character!==false){drawCharacter(studioCharacter(scene,activeTime.local),state.elapsed,scene);state.extraCharacters.forEach(c=>drawCharacter(c,state.elapsed,scene));}
     ctx.restore();
     if(layers.counter!==false)drawCounter(scene,activeTime.local);
     if(!state.vip){ctx.textAlign='left';ctx.fillStyle='#ffffff88';ctx.font='600 13px DM Sans';ctx.fillText('CARTOONLAB',35,680);}
@@ -588,7 +588,7 @@
       '<label class="field"><span>Expression</span><div class="choice-row">'+['happy','surprised','curious','sad','angry','neutral'].map(x=>'<button class="choice '+(c.expression===x?'active':'')+'" data-expression="'+x+'">'+x[0].toUpperCase()+x.slice(1)+'</button>').join('')+'</div></label>'+
       '<label class="field"><span>Character size</span><input id="charSize" type="number" step="any" inputmode="decimal" value="'+c.size+'"></label>'+
       '<label class="field"><span>Stage position (px)</span><input id="charX" type="number" step="any" inputmode="decimal" value="'+c.x+'"></label></div>'+
-      '<button class="full-button" id="addCharacter">＋ Add another character (coming soon)</button><p class="muted-copy">Tip: change the expression between scenes to make reactions feel alive.</p>';
+      '<button class="full-button" id="addCharacter">＋ Add another character</button><p class="muted-copy">Add up to 20 extra characters. Each one appears in the scene and can have its own name, colour and position.</p>'+state.extraCharacters.map((extra,i)=>'<div class="inspector-section"><div class="section-title">EXTRA CHARACTER '+(i+1)+'</div>'+field('Name','extraName'+i,extra.name||'Character '+(i+1))+field('Colour','extraColor'+i,extra.color||'#8bd5ff','color')+field('Stage position (px)','extraX'+i,extra.x??(800+i*20),'number')+'<button class="full-button" data-remove-character="'+i+'">Remove character</button></div>').join('')+'<p class="muted-copy">Tip: change the expression between scenes to make reactions feel alive.</p>';
     } else if(tab==='scenes'){
       html='<div class="inspector-section"><div class="section-title">SCENE SETTINGS</div>'+field('Scene name','sceneName',s.name)+
       '<label class="field"><span>Background</span><select id="sceneBg">'+Object.keys(backgrounds).map(k=>'<option value="'+k+'" '+(s.background===k?'selected':'')+'>'+k[0].toUpperCase()+k.slice(1)+'</option>').join('')+'</select></label>'+
@@ -630,7 +630,11 @@
   }
   function bindInspector(){
     const bind=(id,fn,event='input')=>{const el=$(id);if(el)el.addEventListener(event,()=>fn(el.value));};
-    bind('charName',v=>state.character.name=v);bind('speechText',v=>state.character.speech=v);bind('ttsText',v=>{state.character.ttsText=v;state.voiceBuffer=null;state.voiceText='';});bind('charColor',v=>state.character.color=v);bind('charSize',v=>{const n=Number(v);if(Number.isFinite(n)&&n>0)state.character.size=n;});bind('charX',v=>{const n=Number(v);if(Number.isFinite(n))state.character.x=n;});
+    bind('charName',v=>state.character.name=v);
+    state.extraCharacters.forEach((c,i)=>{bind('extraName'+i,v=>c.name=v);bind('extraColor'+i,v=>c.color=v);bind('extraX'+i,v=>{const n=Number(v);if(Number.isFinite(n))c.x=n;});});
+    if($('addCharacter'))$('addCharacter').onclick=()=>{if(state.extraCharacters.length>=20){toast('Character limit reached (20 extra characters)');return;}state.extraCharacters.push({name:'Character '+(state.extraCharacters.length+2),color:['#8bd5ff','#c6a6ff','#ffd27d','#9ce6b0'][state.extraCharacters.length%4],expression:'happy',x:820,size:0.9,speech:'',ttsText:''});renderInspector();draw();scheduleSave();toast('Character added to your scene');};
+    document.querySelectorAll('[data-remove-character]').forEach(b=>b.onclick=()=>{state.extraCharacters.splice(Number(b.dataset.removeCharacter),1);renderInspector();draw();scheduleSave();});
+bind('speechText',v=>state.character.speech=v);bind('ttsText',v=>{state.character.ttsText=v;state.voiceBuffer=null;state.voiceText='';});bind('charColor',v=>state.character.color=v);bind('charSize',v=>{const n=Number(v);if(Number.isFinite(n)&&n>0)state.character.size=n;});bind('charX',v=>{const n=Number(v);if(Number.isFinite(n))state.character.x=n;});
     bind('sceneName',v=>selectedScene().name=v);bind('sceneBg',v=>selectedScene().background=v,'change');bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedScene().subtitle=v);bind('sceneMotion',v=>selectedScene().motion=v,'change');
     bind('characterMotion',v=>selectedScene().characterMotion=v,'change');bind('houseRoom',v=>selectedScene().houseRoom=v,'change');bind('cameraMotion',v=>selectedScene().cameraMotion=v,'change');bind('objectMotion',v=>selectedScene().objectMotion=v,'change');
     bind('counterLabel',v=>selectedScene().counterLabel=v);bind('counterStart',v=>{const n=Number(v);if(Number.isFinite(n))selectedScene().counterStart=n;});bind('counterStep',v=>{const n=Number(v);if(Number.isFinite(n))selectedScene().counterStep=n;});bind('counterUnit',v=>selectedScene().counterUnit=v);
