@@ -219,7 +219,7 @@
       card.setAttribute('role','button');
       card.setAttribute('aria-label','Select '+scene.name);
       card.style.flexBasis=Math.max(112,Number(scene.duration)*34)+'px';
-      card.innerHTML='<span class="scene-resize scene-resize-left" title="Drag to change segment length" aria-label="Resize segment from start"></span><span class="scene-drag" draggable="true" title="Drag to reorder" aria-label="Drag to reorder">⠿</span><button class="scene-delete" type="button" title="Delete segment" aria-label="Delete '+escapeHtml(scene.name)+'">×</button><b>'+escapeHtml(scene.name)+'</b><small>'+Number(scene.duration).toFixed(1)+' sec</small><span class="scene-num">'+String(i+1).padStart(2,'0')+'</span>';
+      card.innerHTML='<span class="scene-resize scene-resize-left" title="Drag to change segment length" aria-label="Resize segment from start"></span><span class="scene-drag" draggable="true" title="Drag to reorder" aria-label="Drag to reorder">⠿</span><button class="scene-delete" type="button" title="Delete segment" aria-label="Delete '+escapeHtml(scene.name)+'">×</button><b>'+escapeHtml(scene.name)+'</b><small>'+Number(scene.duration).toFixed(1)+' sec</small><span class="scene-num">'+String(i+1).padStart(2,'0')+'</span><span class="scene-resize scene-resize-right" title="Drag to change segment length" aria-label="Resize segment from end"></span>';
       const select=()=>{state.selected=i;state.elapsed=state.scenes.slice(0,i).reduce((n,x)=>n+Number(x.duration||0),0);renderTimeline();renderInspector();scheduleSave();};
       card.addEventListener('click',e=>{if(e.target.closest('.scene-delete,.scene-drag'))return;select();});
       card.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();select();}});
