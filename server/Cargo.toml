@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+anyhow = "1"
 axum = "0.8"
 bytes = "1"
 kokoro-en = "0.1.5"
