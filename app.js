@@ -463,10 +463,17 @@
 
   function drawCounter(scene,local){
     if(!scene.counterEnabled)return;
-    const interval=Math.max(.05,Number(scene.counterInterval)||1);
-    const start=Number.isFinite(Number(scene.counterStart))?Number(scene.counterStart):1;
-    const step=Number.isFinite(Number(scene.counterStep))?Number(scene.counterStep):1;
-    const value=start+Math.floor(Math.max(0,local)/interval)*step;
+    const intervalRaw=Number(scene.counterInterval);
+    const interval=Number.isFinite(intervalRaw)&&intervalRaw>0?intervalRaw:1;
+    const delayRaw=Number(scene.counterDelay);
+    const delay=Number.isFinite(delayRaw)&&delayRaw>0?delayRaw:0;
+    const startRaw=Number(scene.counterStart);
+    const start=Number.isFinite(startRaw)?startRaw:1;
+    const stepRaw=Number(scene.counterStep);
+    const step=Number.isFinite(stepRaw)?stepRaw:1;
+    const elapsed=Math.max(0,Number(local)||0);
+    const increments=elapsed<delay?0:Math.floor((elapsed-delay)/interval)+1;
+    const value=start+increments*step;
     const label=String(scene.counterLabel||'DAY').trim();
     const unit=String(scene.counterUnit||'').trim();
     const counterText=(label?label+' ':'')+value+(unit?' '+unit:'');
@@ -635,7 +642,9 @@
       '<div class="section-title">CORNER COUNTER</div><label class="field"><span><input id="counterEnabled" type="checkbox" '+(s.counterEnabled?'checked':'')+'> Show counter</span></label>'+
       field('Counter label (e.g. DAY)','counterLabel',s.counterLabel||'DAY')+field('Starting number','counterStart',s.counterStart??1,'number')+
       field('Increase by','counterStep',s.counterStep??1,'number')+field('Unit (e.g. DB)','counterUnit',s.counterUnit||'')+
-      '<label class="field"><span>Increase every</span><select id="counterInterval"><option value="1" '+((s.counterInterval||1)==1?'selected':'')+'>1 second</option><option value="2" '+(s.counterInterval==2?'selected':'')+'>2 seconds</option><option value="5" '+(s.counterInterval==5?'selected':'')+'>5 seconds</option><option value="10" '+(s.counterInterval==10?'selected':'')+'>10 seconds</option></select></label>'+
+      'field('Wait before first count (seconds)','counterDelay',s.counterDelay??0,'number')+
+      field('Count up every (seconds)','counterInterval',s.counterInterval??1,'number')+
+      '<p class="muted-copy">Example: wait 3 seconds, then count up every 2 seconds. The counter starts at your starting number before the first count.</p>'+
       '<label class="field"><span>Corner</span><select id="counterCorner">'+[['top-right','Top right'],['top-left','Top left'],['bottom-right','Bottom right'],['bottom-left','Bottom left']].map(([v,l])=>'<option value="'+v+'" '+((s.counterCorner||'top-right')===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>'+
       '<div class="section-title">SCENE OBJECTS</div><label class="field"><span>Background motion</span><select id="objectMotion">'+[['sparkles','Floating sparkles'],['bubbles','Bubbles'],['hearts','Hearts'],['rise','Rising particles'],['orbit','Orbiting sparkles'],['fast','Fast sparkles'],['none','None']].map(([v,l])=>'<option value="'+v+'" '+((s.objectMotion||'sparkles')===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>'+
       '<label class="field"><span>Legacy motion style</span><select id="sceneMotion"><option value="bounce" '+(s.motion==='bounce'?'selected':'')+'>Bouncy</option><option value="float" '+(s.motion==='float'?'selected':'')+'>Floaty</option><option value="still" '+(s.motion==='still'?'selected':'')+'>Still</option></select></label>'+
@@ -666,8 +675,10 @@
     bind('charName',v=>state.character.name=v);bind('speechText',v=>state.character.speech=v);bind('ttsText',v=>{state.character.ttsText=v;state.voiceBuffer=null;state.voiceText='';});bind('charColor',v=>state.character.color=v);bind('charSize',v=>{const n=Number(v);if(Number.isFinite(n)&&n>0)state.character.size=n;});bind('charX',v=>{const n=Number(v);if(Number.isFinite(n))state.character.x=n;});
     bind('sceneName',v=>selectedScene().name=v);bind('sceneBg',v=>selectedScene().background=v,'change');bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedScene().subtitle=v);bind('sceneMotion',v=>selectedScene().motion=v,'change');
     bind('characterMotion',v=>selectedScene().characterMotion=v,'change');bind('houseRoom',v=>selectedScene().houseRoom=v,'change');bind('cameraMotion',v=>selectedScene().cameraMotion=v,'change');bind('objectMotion',v=>selectedScene().objectMotion=v,'change');
-    bind('counterLabel',v=>selectedScene().counterLabel=v);bind('counterStart',v=>selectedScene().counterStart=Number(v)||0);bind('counterStep',v=>selectedScene().counterStep=Number(v)||0);bind('counterUnit',v=>selectedScene().counterUnit=v);
-    bind('counterInterval',v=>selectedScene().counterInterval=Number(v),'change');bind('counterCorner',v=>selectedScene().counterCorner=v,'change');
+    bind('counterLabel',v=>selectedScene().counterLabel=v);bind('counterStart',v=>{const n=Number(v);if(Number.isFinite(n))selectedScene().counterStart=n;});bind('counterStep',v=>{const n=Number(v);if(Number.isFinite(n))selectedScene().counterStep=n;});bind('counterUnit',v=>selectedScene().counterUnit=v);
+    bind('counterDelay',v=>{const n=Number(v);if(Number.isFinite(n)&&n>=0)selectedScene().counterDelay=n;});
+    bind('counterInterval',v=>{const n=Number(v);if(Number.isFinite(n)&&n>0)selectedScene().counterInterval=n;});
+    bind('counterCorner',v=>selectedScene().counterCorner=v,'change');
     if($('counterEnabled'))$('counterEnabled').onchange=e=>selectedScene().counterEnabled=e.target.checked;
     bind('sceneDuration',v=>{const n=Number(v);if(Number.isFinite(n)&&n>0){selectedScene().duration=n;state.elapsed=Math.min(state.elapsed,totalDuration());renderTimeline();updateClock();}});
     if($('speakDialogue'))$('speakDialogue').onclick=()=>state.lipSync.active?stopLipSync():startLipSync();
