@@ -5,7 +5,7 @@
   const state = {
     title: 'Untitled story', tab: 'characters', selected: 0, playing: false, vip: localStorage.getItem('cartoonlab-vip') === 'true',
     elapsed: 0, lastFrame: 0, audioUrl: null, audioName: '', audioBuffer:null, audioTracks:[], kokoro: null, kokoroLoading: false, kokoroPromise: null, voiceBuffer: null, voiceText: '', voiceName: 'af_heart', voiceSpeed: 1, voiceBufferSpeed: 1, audioContext: null, voiceSource: null, analyser: null, analyserData: null, lipSync: { active:false, startedAt:0, utterance:null },
-    character: { name: 'Bloop', color: '#ff9cba', expression: 'happy', x: 640, size: 1, speech: 'What if...?', ttsText: 'What if...?' }, extraCharacters: [],
+    character: { name: 'Bloop', color: '#ff9cba', expression: 'happy', x: 640, size: 1, speech: 'What if...?', ttsText: 'What if...?' }, extraCharacters: [], meshObjects: [],
     scenes: [{ name: 'Opening scene', duration: 6, background: 'sunset', title: 'WHAT IF...?', subtitle: 'A tiny idea. A BIG adventure.', motion: 'bounce' }]
   };
   const PROJECT_KEY = 'cartoonlab-project-v1';
@@ -90,7 +90,7 @@
     }
   }
   function projectSnapshot(){
-    return {version:1,title:state.title,character:state.character,extraCharacters:state.extraCharacters,scenes:state.scenes,selected:state.selected,elapsed:state.elapsed,vip:state.vip,voiceSpeed:state.voiceSpeed,voiceName:state.voiceName};
+    return {version:3,title:state.title,character:state.character,extraCharacters:state.extraCharacters,meshObjects:state.meshObjects,scenes:state.scenes,selected:state.selected,elapsed:state.elapsed,vip:state.vip,voiceSpeed:state.voiceSpeed,voiceName:state.voiceName};
   }
   function saveProject(){
     try{
@@ -115,7 +115,7 @@
       if(!raw)return;
       const saved=JSON.parse(raw);
       if(!saved || saved.version!==1 || !Array.isArray(saved.scenes) || !saved.scenes.length)return;
-      if(saved.character && typeof saved.character==='object'){state.character={...state.character,...saved.character};if(typeof saved.character.ttsText!=='string')state.character.ttsText=String(saved.character.speech||'');}if(Array.isArray(saved.extraCharacters))state.extraCharacters=saved.extraCharacters.filter(c=>c&&typeof c==='object').slice(0,20);
+      if(saved.character && typeof saved.character==='object'){state.character={...state.character,...saved.character};if(typeof saved.character.ttsText!=='string')state.character.ttsText=String(saved.character.speech||'');}if(Array.isArray(saved.extraCharacters))state.extraCharacters=saved.extraCharacters.filter(c=>c&&typeof c==='object').slice(0,20);if(Array.isArray(saved.meshObjects))state.meshObjects=saved.meshObjects.filter(m=>m&&typeof m==='object').slice(0,100);
       state.scenes=saved.scenes.filter(s=>s && typeof s==='object' && Number.isFinite(Number(s.duration)) && Number(s.duration)>0);
       if(!state.scenes.length)state.scenes=[{name:'Opening scene',duration:3,background:'sunset',title:'WHAT IF...?',subtitle:'A tiny idea. A BIG adventure.',motion:'bounce'}];
       state.title=typeof saved.title==='string' && saved.title ? saved.title : state.title;
@@ -484,6 +484,54 @@
     ctx.fillStyle='#fff';ctx.fillText(counterText,left+width/2,top+height/2);
     ctx.restore();
   }
+
+  // Mini Mesh Lab: editable primitive meshes, stored as real vertices/faces in HSL.
+  function createPrimitiveMesh(type){
+    const vertices=[],faces=[],segments=16;
+    if(type==='cube'){
+      vertices.push([-1,-1,-1],[1,-1,-1],[1,1,-1],[-1,1,-1],[-1,-1,1],[1,-1,1],[1,1,1],[-1,1,1]);
+      faces.push([0,3,2,1],[4,5,6,7],[0,1,5,4],[3,7,6,2],[0,4,7,3],[1,2,6,5]);
+    }else if(type==='pyramid'){
+      vertices.push([-1,1,-1],[1,1,-1],[1,1,1],[-1,1,1],[0,-1,0]);
+      faces.push([0,3,2,1],[0,1,4],[1,2,4],[2,3,4],[3,0,4]);
+    }else if(type==='sphere'){
+      const rings=8,cols=segments;
+      for(let y=0;y<=rings;y++){const v=Math.PI*y/rings;for(let x=0;x<cols;x++){const u=2*Math.PI*x/cols;vertices.push([Math.sin(v)*Math.cos(u),Math.cos(v),Math.sin(v)*Math.sin(u)]);}}
+      for(let y=0;y<rings;y++)for(let x=0;x<cols;x++){const a=y*cols+x,b=y*cols+(x+1)%cols,c=(y+1)*cols+(x+1)%cols,d=(y+1)*cols+x;faces.push([a,b,c,d]);}
+    }else if(type==='cylinder'||type==='cone'){
+      for(let y=0;y<2;y++)for(let x=0;x<segments;x++){const a=2*Math.PI*x/segments;vertices.push([Math.cos(a),y?1:-1,Math.sin(a)]);}
+      vertices.push([0,-1,0]);if(type==='cone')vertices.push([0,1,0]);
+      for(let x=0;x<segments;x++){const n=(x+1)%segments;faces.push([x,n,segments+n,segments+x]);if(type==='cone')faces.push([x,n,segments+1]);}
+      if(type==='cylinder'){faces.push(Array.from({length:segments},(_,i)=>i).reverse(),Array.from({length:segments},(_,i)=>segments+i));}
+    }else if(type==='torus'){
+      const tube=7;
+      for(let i=0;i<segments;i++)for(let j=0;j<tube;j++){const u=2*Math.PI*i/segments,v=2*Math.PI*j/tube,r=0.68+0.3*Math.cos(v);vertices.push([r*Math.cos(u),.3*Math.sin(v),r*Math.sin(u)]);}
+      for(let i=0;i<segments;i++)for(let j=0;j<tube;j++){const a=i*tube+j,b=((i+1)%segments)*tube+j,c=((i+1)%segments)*tube+(j+1)%tube,d=i*tube+(j+1)%tube;faces.push([a,b,c,d]);}
+    }
+    return {id:'mesh-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6),name:type[0].toUpperCase()+type.slice(1),type,color:'#a78bfa',x:640,y:390,z:0,scale:90,rotationX:18,rotationY:-24,rotationZ:0,vertices,faces};
+  }
+  function drawMeshObjects(){
+    state.meshObjects.forEach(mesh=>{
+      if(mesh.visible===false)return;
+      const rx=(Number(mesh.rotationX)||0)*Math.PI/180,ry=(Number(mesh.rotationY)||0)*Math.PI/180,rz=(Number(mesh.rotationZ)||0)*Math.PI/180;
+      const scale=Math.max(2,Math.min(400,Number(mesh.scale)||90));
+      const projected=mesh.vertices.map(v=>{
+        let [x,y,z]=v.map(n=>n*scale);
+        let y1=y*Math.cos(rx)-z*Math.sin(rx),z1=y*Math.sin(rx)+z*Math.cos(rx);y=y1;z=z1;
+        let x1=x*Math.cos(ry)+z*Math.sin(ry);z1=-x*Math.sin(ry)+z*Math.cos(ry);x=x1;z=z1;
+        x1=x*Math.cos(rz)-y*Math.sin(rz);y1=x*Math.sin(rz)+y*Math.cos(rz);x=x1;y=y1;
+        const perspective=700/(700+z);
+        return {x:Number(mesh.x||640)+x*perspective,y:Number(mesh.y||360)+y*perspective,z};
+      });
+      const faces=mesh.faces.map(face=>({face,depth:face.reduce((sum,i)=>sum+projected[i].z,0)/face.length})).sort((a,b)=>b.depth-a.depth);
+      faces.forEach(({face},index)=>{
+        ctx.beginPath();face.forEach((id,i)=>{const p=projected[id];if(i)ctx.lineTo(p.x,p.y);else ctx.moveTo(p.x,p.y);});ctx.closePath();
+        ctx.fillStyle=mesh.color||'#a78bfa';ctx.globalAlpha=.68+((index%4)*.08);ctx.fill();
+        ctx.globalAlpha=1;ctx.strokeStyle='#ffffff99';ctx.lineWidth=1.4;ctx.stroke();
+      });
+    });
+  }
+
   function draw(){
     const activeTime=currentTime();
     const scene=state.scenes[activeTime.index]||selectedScene(), bg=backgrounds[scene.background]||backgrounds.sunset;
@@ -492,7 +540,7 @@
     const has3D=scene.background!=='withering-forest'&&!!(window.CartoonLab3D&&window.CartoonLab3D.ready&&window.CartoonLab3D.render(state.elapsed,scene));
     if(has3D&&window.CartoonLab3D.canvas&&(scene.layers?.background!==false))ctx.drawImage(window.CartoonLab3D.canvas,0,0,1280,720);
     const layers=scene.layers||{};
-    if(scene.houseRoom){if(layers.background!==false&&!has3D)drawHouseRoom(scene,state.elapsed);if(layers.character!==false){drawCharacter(studioCharacter(scene,activeTime.local),state.elapsed,scene);state.extraCharacters.forEach(c=>drawCharacter(c,state.elapsed,scene));}if(scene.title){ctx.save();ctx.textAlign='center';ctx.fillStyle='#fff';ctx.shadowColor='#0008';ctx.shadowBlur=12;ctx.font='800 42px Space Grotesk';ctx.fillText(scene.title,640,72);ctx.restore();}if(scene.subtitle){ctx.save();ctx.textAlign='center';ctx.fillStyle='#fff';ctx.font='500 20px DM Sans';ctx.fillText(scene.subtitle,640,108);ctx.restore();}}
+    if(scene.houseRoom){if(layers.background!==false&&!has3D)drawHouseRoom(scene,state.elapsed);drawMeshObjects();if(layers.character!==false){drawCharacter(studioCharacter(scene,activeTime.local),state.elapsed,scene);state.extraCharacters.forEach(c=>drawCharacter(c,state.elapsed,scene));}if(scene.title){ctx.save();ctx.textAlign='center';ctx.fillStyle='#fff';ctx.shadowColor='#0008';ctx.shadowBlur=12;ctx.font='800 42px Space Grotesk';ctx.fillText(scene.title,640,72);ctx.restore();}if(scene.subtitle){ctx.save();ctx.textAlign='center';ctx.fillStyle='#fff';ctx.font='500 20px DM Sans';ctx.fillText(scene.subtitle,640,108);ctx.restore();}}
     else if(layers.background!==false&&!has3D){if(scene.background==='withering-forest')drawWitheringForest(scene,activeTime.local);else{const grad=ctx.createLinearGradient(0,0,0,720);grad.addColorStop(0,bg[0]);grad.addColorStop(.65,bg[1]);grad.addColorStop(1,bg[2]);ctx.fillStyle=grad;ctx.fillRect(0,0,1280,720);}}
     if(scene.houseRoom){if(layers.counter!==false)drawCounter(scene,activeTime.local);return;}
     const t=state.elapsed, camera=scene.cameraMotion||'none';
@@ -524,6 +572,7 @@
     if(scene.subtitle){ctx.textAlign='center';ctx.fillStyle='#fff';ctx.globalAlpha=.85;ctx.font='500 22px DM Sans';ctx.fillText(scene.subtitle,640,137);ctx.globalAlpha=1;}
     if(state.onionSkin&&!state.playing){const prev=(scene.keyframes||[]).filter(k=>k.time<activeTime.local).slice(-1)[0];if(prev){ctx.save();ctx.globalAlpha=.18;drawCharacter({...state.character,...prev},state.elapsed-.08,scene);ctx.restore();}}
     if(layers.character!==false){drawCharacter(studioCharacter(scene,activeTime.local),state.elapsed,scene);state.extraCharacters.forEach(c=>drawCharacter(c,state.elapsed,scene));}
+    drawMeshObjects();
     ctx.restore();
     if(layers.counter!==false)drawCounter(scene,activeTime.local);
     if(!state.vip){ctx.textAlign='left';ctx.fillStyle='#ffffff88';ctx.font='600 13px DM Sans';ctx.fillText('CARTOONLAB',35,680);}
@@ -627,7 +676,9 @@
       '<label class="field"><span>Expression</span><div class="choice-row">'+['happy','surprised','curious','sad','angry','neutral'].map(x=>'<button class="choice '+(c.expression===x?'active':'')+'" data-expression="'+x+'">'+x[0].toUpperCase()+x.slice(1)+'</button>').join('')+'</div></label>'+
       '<label class="field"><span>Character size</span><input id="charSize" type="number" step="any" inputmode="decimal" value="'+c.size+'"></label>'+
       '<label class="field"><span>Stage position (px)</span><input id="charX" type="number" step="any" inputmode="decimal" value="'+c.x+'"></label></div>'+
-      '<button class="full-button" id="addCharacter">＋ Add another character</button><p class="muted-copy">Add up to 20 extra characters. Each one appears in the scene and can have its own name, colour and position.</p>'+state.extraCharacters.map((extra,i)=>'<div class="inspector-section"><div class="section-title">EXTRA CHARACTER '+(i+1)+'</div>'+field('Name','extraName'+i,extra.name||'Character '+(i+1))+field('Colour','extraColor'+i,extra.color||'#8bd5ff','color')+field('Stage position (px)','extraX'+i,extra.x??(800+i*20),'number')+'<button class="full-button" data-remove-character="'+i+'">Remove character</button></div>').join('')+'<p class="muted-copy">Tip: change the expression between scenes to make reactions feel alive.</p>';
+      '<button class="full-button" id="addCharacter">＋ Add another character</button><p class="muted-copy">Add up to 20 extra characters. Each one appears in the scene and can have its own name, colour and position.</p>'+state.extraCharacters.map((extra,i)=>'<div class="inspector-section"><div class="section-title">EXTRA CHARACTER '+(i+1)+'</div>'+field('Name','extraName'+i,extra.name||'Character '+(i+1))+field('Colour','extraColor'+i,extra.color||'#8bd5ff','color')+field('Stage position (px)','extraX'+i,extra.x??(800+i*20),'number')+'<button class="full-button" data-remove-character="'+i+'">Remove character</button></div>').join('')+'<p class="muted-copy">Tip: change the expression between scenes to make reactions feel alive.</p>'+ 
+      '<div class="mesh-lab"><div class="mesh-lab-heading"><span>⬡</span><div><b>MINI MESH LAB</b><small>Build 3D props for your characters</small></div></div><label class="field"><span>Primitive mesh</span><select id="meshPrimitive"><option value="cube">Cube</option><option value="sphere">Sphere</option><option value="cylinder">Cylinder</option><option value="cone">Cone</option><option value="pyramid">Pyramid</option><option value="torus">Torus</option></select></label><button class="full-button mesh-add" id="addMesh">＋ Create mesh object</button><p class="muted-copy">Meshes are editable, saved in your project and included in HSL exports.</p>'+state.meshObjects.map((m,i)=>'<div class="mesh-object"><div class="mesh-object-title"><b>'+escapeHtml(m.name||m.type||'Mesh')+'</b><button class="mesh-remove" data-remove-mesh="'+i+'" title="Delete mesh">×</button></div>'+field('Object name','meshName'+i,m.name||'Mesh')+'<label class="field"><span>Mesh colour</span><input id="meshColor'+i+'" type="color" value="'+escapeHtml(m.color||'#a78bfa')+'"></label><div class="field-row">'+field('X position','meshX'+i,m.x??640,'number')+field('Y position','meshY'+i,m.y??360,'number')+'</div><label class="field"><span>Size</span><input id="meshScale'+i+'" type="number" min="2" max="400" value="'+(m.scale??90)+'"></label><div class="field-row">'+field('Rotate X','meshRX'+i,m.rotationX??0,'number')+field('Rotate Y','meshRY'+i,m.rotationY??0,'number')+'</div>'+field('Rotate Z','meshRZ'+i,m.rotationZ??0,'number')+'</div>').join('')+'</div>'+
+;
     } else if(tab==='scenes'){
       html='<div class="inspector-section"><div class="section-title">SCENE SETTINGS</div>'+field('Scene name','sceneName',s.name)+
       '<label class="field"><span>Background</span><select id="sceneBg">'+Object.keys(backgrounds).map(k=>'<option value="'+k+'" '+(s.background===k?'selected':'')+'>'+k[0].toUpperCase()+k.slice(1)+'</option>').join('')+'<option value="withering-forest" '+(s.background==='withering-forest'?'selected':'')+'>Withering forest · changes over time</option></select></label>'+
@@ -703,6 +754,27 @@ bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedSc
     const timelineDeletes=document.querySelectorAll('.scene-delete');
     if(timelineDeletes[state.selected])timelineDeletes[state.selected].click();
   });
+
+  // Five-minute campaign clock: persistent across reloads in this browser.
+  const CAMPAIGN_KEY='cartoonlab-beginning-of-time-start-v1';
+  let campaignStart=0;
+  try{campaignStart=Number(localStorage.getItem(CAMPAIGN_KEY))||0;if(!campaignStart){campaignStart=Date.now();localStorage.setItem(CAMPAIGN_KEY,String(campaignStart));}}catch(error){campaignStart=Date.now();}
+  const campaignEnd=campaignStart+5*60*1000;
+  function updateCampaignClock(){
+    const remaining=Math.max(0,campaignEnd-Date.now()),seconds=Math.ceil(remaining/1000);
+    const clock=$('campaignCountdown'),status=$('campaignStatus'),reveal=$('revealUpdate'),link=$('updateDocLink');
+    if(clock)clock.textContent=String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0');
+    if(remaining===0){if(status)status.textContent='UPDATE READY';if(reveal)reveal.textContent='Open update';if(link)link.hidden=false;}
+  }
+  updateCampaignClock();const campaignInterval=setInterval(()=>{updateCampaignClock();if(Date.now()>=campaignEnd)clearInterval(campaignInterval);},250);
+  const updatePanel=$('updateDocument');
+  function openUpdateDocument(){updatePanel?.classList.add('open');updatePanel?.setAttribute('aria-hidden','false');}
+  function closeUpdateDocument(){updatePanel?.classList.remove('open');updatePanel?.setAttribute('aria-hidden','true');}
+  $('revealUpdate')?.addEventListener('click',()=>{const link=$('updateDocLink');if(link)link.hidden=false;openUpdateDocument();});
+  $('updateDocLink')?.addEventListener('click',e=>{e.preventDefault();openUpdateDocument();});
+  $('closeUpdateDocument')?.addEventListener('click',closeUpdateDocument);
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')closeUpdateDocument();});
+
   const inspector=$('inspectorContent');
   inspector.addEventListener('focusin',()=>{if(state.playing){state.playing=false;$('playButton').textContent='▶';}});
   function switchTab(tab){state.tab=tab;document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));renderInspector();}
@@ -811,7 +883,7 @@ bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedSc
     return JSON.parse(new TextDecoder().decode(bytes));
   }
   function hypershortSource(){
-    const lines=['!cartoonlab 2','!project '+encodeHslPayload(projectSnapshot())];
+    const lines=['!cartoonlab 3','!hsl-format 3','!project '+encodeHslPayload(projectSnapshot())];
     state.scenes.forEach(scene=>{
       lines.push('@'+Math.max(.1,Number(scene.duration)||5)+' '+(scene.background||'sunset'));
       if(scene.title)lines.push('>'+JSON.stringify(scene.title));
@@ -841,7 +913,7 @@ bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedSc
       if(!scenes.length)throw new Error('The HSL file contains no valid scenes');
       checkpoint();
       state.title=typeof project.title==='string'&&project.title?project.title:'Imported HSL project';
-      if(project.character&&typeof project.character==='object')state.character={...state.character,...project.character};
+      if(project.character&&typeof project.character==='object')state.character={...state.character,...project.character};if(Array.isArray(project.extraCharacters))state.extraCharacters=project.extraCharacters.filter(c=>c&&typeof c==='object').slice(0,20);if(Array.isArray(project.meshObjects))state.meshObjects=project.meshObjects.filter(m=>m&&typeof m==='object').slice(0,100);
       state.scenes=scenes;
       state.selected=Math.max(0,Math.min(scenes.length-1,Number(project.selected)||0));
       state.elapsed=Math.max(0,Math.min(Number(project.elapsed)||0,totalDuration()));
