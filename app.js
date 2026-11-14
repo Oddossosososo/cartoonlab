@@ -765,7 +765,7 @@
   renderTimeline();renderInspector();requestAnimationFrame(frame);
   // Download and cache the voice model automatically after the editor is ready.
   // This is a one-time first-visit download; the browser/runtime cache handles later visits.
-  const preloadKokoro=()=>loadKokoro().catch(error=>console.warn('Kokoro background preload failed; it will retry when narration is used:',error));
+  const preloadKokoro=()=>{if(state.ttsBackendUrl)return;return loadKokoro().catch(error=>console.warn('Kokoro background preload failed; it will retry when narration is used:',error));};
   if(typeof window.requestIdleCallback==='function')window.requestIdleCallback(preloadKokoro,{timeout:4000});
   else setTimeout(preloadKokoro,1800);
 })();
