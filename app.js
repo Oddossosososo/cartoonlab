@@ -18,7 +18,7 @@
     const bytes=new TextEncoder().encode(JSON.stringify(payload));
     let binary='';
     for(let i=0;i<bytes.length;i++)binary+=String.fromCharCode(bytes[i]);
-    return 'CL1-'+btoa(binary).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,'');
+    return 'CL1-'+btoa(binary).split('+').join('-').split('/').join('_').replace(/=+$/,'');
   }
   async function shareProjectCode(){
     const code=makeShareCode();
