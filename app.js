@@ -574,28 +574,65 @@
   function playSound(kind){const AC=window.AudioContext||window.webkitAudioContext;if(!AC){toast('Sound effects are unavailable');return;}const ac=new AC(),o=ac.createOscillator(),g=ac.createGain();o.connect(g);g.connect(ac.destination);const now=ac.currentTime;o.type=kind==='boing'?'triangle':'sine';o.frequency.setValueAtTime(kind==='boing'?180:kind==='sparkle'?900:520,now);o.frequency.exponentialRampToValueAtTime(kind==='boing'?520:kind==='sparkle'?1500:180,now+.22);g.gain.setValueAtTime(.12,now);g.gain.exponentialRampToValueAtTime(.001,now+.25);o.start();o.stop(now+.26);}
   $('exportVideo').onclick=async()=>{
     if(!canvas.captureStream||!window.MediaRecorder){toast('Video recording is not supported in this browser');return;}
+    const button=$('exportVideo');
+    if(button)button.disabled=true;
     state.playing=false;state.elapsed=0;$('playButton').textContent='▶';
+    stopLipSync();
+    let voiceBuffer=null;
     const dialogue=String(state.character.ttsText||'').trim();
-    if(dialogue){
-      try{await generateVoice();}
-      catch(error){console.error('Kokoro export voice:',error);toast('Could not generate narration: '+(error.message||'check your connection'));return;}
-    }
-    let stream=canvas.captureStream(30), audioDestination=null;
     try{
-      if(state.voiceBuffer){
-        const ac=audioContext();if(ac.state==='suspended')await ac.resume();
+      if(dialogue){
+        toast('Preparing AI voice for video…');
+        voiceBuffer=await generateVoice();
+        if(!voiceBuffer)throw new Error('No voice audio was generated.');
+      }
+      const ac=voiceBuffer?audioContext():null;
+      if(ac&&ac.state==='suspended')await ac.resume();
+      const stream=canvas.captureStream(30);
+      let audioDestination=null,voiceSource=null;
+      if(voiceBuffer){
         audioDestination=ac.createMediaStreamDestination();
         const analyser=ac.createAnalyser();analyser.fftSize=256;
-        const source=ac.createBufferSource();source.buffer=state.voiceBuffer;
-        source.connect(analyser);analyser.connect(audioDestination);
-        state.analyser=analyser;state.analyserData=new Uint8Array(analyser.fftSize);state.lipSync.active=true;
-        source.onended=()=>{state.lipSync.active=false;state.analyser=null;state.analyserData=null;};
-        source.start();
+        voiceSource=ac.createBufferSource();voiceSource.buffer=voiceBuffer;
+        voiceSource.connect(analyser);
+        analyser.connect(audioDestination);
         audioDestination.stream.getAudioTracks().forEach(track=>stream.addTrack(track));
+        state.analyser=analyser;state.analyserData=new Uint8Array(analyser.fftSize);state.lipSync.active=true;
       }
-    }catch(error){console.warn('Audio export setup failed:',error);}
-    let mime='video/webm;codecs=vp9,opus';if(!MediaRecorder.isTypeSupported(mime))mime='video/webm';
-    const recorder=new MediaRecorder(stream,{mimeType:mime});const chunks=[];recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};recorder.onstop=()=>{const blob=new Blob(chunks,{type:mime});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=(state.title||'cartoonlab-story').replace(/[^a-z0-9-_]+/gi,'-')+'.webm';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);stream.getTracks().forEach(track=>track.stop());state.playing=false;state.elapsed=0;$('playButton').textContent='▶';toast(state.voiceBuffer?'Video exported with voice audio!':'Video ready (generate dialogue first to include voice audio).');};recorder.start();state.playing=true;$('playButton').textContent='Ⅱ';toast(state.voiceBuffer?'Recording animation + voice…':'Recording animation…');setTimeout(()=>{if(recorder.state!=='inactive')recorder.stop();},totalDuration()*1000);
+      let mime='video/webm;codecs=vp9,opus';
+      if(!MediaRecorder.isTypeSupported(mime))mime='video/webm';
+      const recorder=new MediaRecorder(stream,{mimeType:mime});
+      const chunks=[];
+      const exportDuration=Math.max(totalDuration(),voiceBuffer?voiceBuffer.duration:0.5);
+      recorder.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data);};
+      recorder.onerror=e=>{console.error('Video export recorder error:',e.error||e);toast('Video export failed. Try again.');};
+      recorder.onstop=()=>{
+        const blob=new Blob(chunks,{type:recorder.mimeType||mime});
+        const url=URL.createObjectURL(blob);
+        const a=document.createElement('a');a.href=url;
+        a.download=(state.title||'cartoonlab-story').replace(/[^a-z0-9-_]+/gi,'-')+'.webm';
+        a.click();setTimeout(()=>URL.revokeObjectURL(url),3000);
+        stream.getTracks().forEach(track=>track.stop());
+        state.playing=false;state.elapsed=0;$('playButton').textContent='▶';
+        state.lipSync.active=false;state.analyser=null;state.analyserData=null;
+        if(button)button.disabled=false;
+        toast(voiceBuffer?'Video exported with AI voice included!':'Video exported without AI voice.');
+      };
+      recorder.start(100);
+      state.playing=true;$('playButton').textContent='Ⅱ';
+      if(voiceSource){
+        voiceSource.onended=()=>{state.lipSync.active=false;state.analyser=null;state.analyserData=null;};
+        voiceSource.start(ac.currentTime+0.08);
+      }
+      toast(voiceBuffer?'Recording video + AI voice…':'Recording video…');
+      setTimeout(()=>{if(recorder.state!=='inactive')recorder.stop();},exportDuration*1000+150);
+    }catch(error){
+      console.error('CartoonLab video export:',error);
+      state.playing=false;state.elapsed=0;$('playButton').textContent='▶';
+      state.lipSync.active=false;state.analyser=null;state.analyserData=null;
+      if(button)button.disabled=false;
+      toast('Video export failed: '+(error.message||'check browser permissions'));
+    }
   };
   renderTimeline();renderInspector();requestAnimationFrame(frame);
   // Download and cache the voice model automatically after the editor is ready.
