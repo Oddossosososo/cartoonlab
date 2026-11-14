@@ -9,12 +9,12 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 
 const W=1280,H=720,RENDER_W=960,RENDER_H=540,RENDER_INTERVAL=1000/60;
 const palettes={
-  sunset:{sky:0x302044,floor:0x8c6370,accent:0xffa17e},
-  sky:{sky:0x31577a,floor:0x6c9bb4,accent:0x9ce5ff},
-  night:{sky:0x11152f,floor:0x34385f,accent:0x9c8cff},
-  mint:{sky:0x1c4c45,floor:0x4c8878,accent:0x9be7c7},
-  candy:{sky:0x572b59,floor:0x9d568e,accent:0xffb5d6},
-  studio:{sky:0x29283d,floor:0x55516d,accent:0xb5a5ff}
+  sunset:{sky:0x302044,floor:0x8c6370,accent:0xffa17e,far:0x59466f,mid:0x8a5876,near:0x65445f,cloud:0xffc0a6,sun:0xffd29a},
+  sky:{sky:0x31577a,floor:0x6c9bb4,accent:0x9ce5ff,far:0x547fa0,mid:0x6ca4bd,near:0x4f879c,cloud:0xe4f6ff,sun:0xfff0c2},
+  night:{sky:0x11152f,floor:0x34385f,accent:0x9c8cff,far:0x252b55,mid:0x353b70,near:0x252c58,cloud:0x7475a5,sun:0xd2caff},
+  mint:{sky:0x1c4c45,floor:0x4c8878,accent:0x9be7c7,far:0x386b62,mid:0x4f927e,near:0x326e60,cloud:0xbcebd5,sun:0xffe8b2},
+  candy:{sky:0x572b59,floor:0x9d568e,accent:0xffb5d6,far:0x784b7d,mid:0xb56b9e,near:0x8c4c82,cloud:0xffd0e7,sun:0xffd5ee},
+  studio:{sky:0x29283d,floor:0x55516d,accent:0xb5a5ff,far:0x45415e,mid:0x625b7e,near:0x403b5c,cloud:0xc8c0e8,sun:0xe5ddff}
 };
 
 function canvasTexture(draw,size=512){
@@ -76,33 +76,51 @@ function makeRenderer(){
   }
   return Promise.resolve(new THREE.WebGLRenderer(params));
 }
+function addSceneryShape(points,z,color,role){
+  const shape=new THREE.Shape();
+  shape.moveTo(points[0][0],points[0][1]);
+  for(let i=1;i<points.length;i++)shape.lineTo(points[i][0],points[i][1]);
+  shape.closePath();
+  const mesh=new THREE.Mesh(new THREE.ShapeGeometry(shape),new THREE.MeshStandardMaterial({color,roughness:.95,metalness:0,side:THREE.DoubleSide}));
+  mesh.position.z=z;mesh.userData.paletteRole=role;roomGroup.add(mesh);return mesh;
+}
+function addCloud(x,y,z,scale,color){
+  const shape=new THREE.Shape();
+  shape.moveTo(-2.2,0);shape.bezierCurveTo(-2.8,.7,-1.8,1.35,-.9,1.05);
+  shape.bezierCurveTo(-.65,2.0,.8,2.05,1.15,1.15);
+  shape.bezierCurveTo(2.45,1.45,2.8,.3,1.9,0);shape.lineTo(-2.2,0);
+  const mesh=new THREE.Mesh(new THREE.ShapeGeometry(shape,12),new THREE.MeshBasicMaterial({color,transparent:true,opacity:.72,side:THREE.DoubleSide}));
+  mesh.position.set(x,y,z);mesh.scale.setScalar(scale);mesh.userData={paletteRole:'cloud',baseX:x,phase:x*.11};roomGroup.add(mesh);
+}
+function addTree(x,z,scale,color){
+  const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.12*scale,.18*scale,1.5*scale,7),new THREE.MeshStandardMaterial({color:0x493747,roughness:1}));
+  trunk.position.set(x,-1.1*scale,z);roomGroup.add(trunk);
+  for(let i=0;i<3;i++){
+    const crown=new THREE.Mesh(new THREE.ConeGeometry((.9-i*.16)*scale,1.55*scale,7),new THREE.MeshStandardMaterial({color,roughness:.95}));
+    crown.position.set(x,(-.1+i*.55)*scale,z);crown.userData.paletteRole='tree';roomGroup.add(crown);
+  }
+}
 function addRoomObjects(palette,maps){
   roomGroup=new THREE.Group();scene.add(roomGroup);
-  const floorMat=new THREE.MeshStandardMaterial({
-    map:maps.albedo,roughnessMap:maps.roughness,metalnessMap:maps.metalness,
-    normalMap:maps.normal,normalScale:new THREE.Vector2(.22,.22),
-    color:palette.floor,roughness:.62,metalness:.12
-  });
-  const floor=new THREE.Mesh(new THREE.PlaneGeometry(200,200,1,1),floorMat);
-  floor.rotation.x=-Math.PI/2;floor.position.y=-2.25;floor.receiveShadow=true;roomGroup.add(floor);
-  const backMat=new THREE.MeshStandardMaterial({color:palette.sky,roughness:.9,metalness:.02});
-  const back=new THREE.Mesh(new THREE.PlaneGeometry(200,80),backMat);
-  back.position.set(0,18,-34);roomGroup.add(back);
-  const sphereMat=new THREE.MeshPhysicalMaterial({
-    color:palette.accent,roughness:.24,metalness:.32,clearcoat:.85,clearcoatRoughness:.16,
-    roughnessMap:maps.roughness,normalMap:maps.normal,normalScale:new THREE.Vector2(.12,.12)
-  });
-  for(let i=0;i<5;i++){
-    const radius=1.05+(i%3)*.38;
-    const orb=new THREE.Mesh(new THREE.SphereGeometry(radius,32,20),sphereMat.clone());
-    orb.position.set((i-2)*3.25,-.35+(i%2)*.55,-3-(i%3)*1.2);
-    orb.castShadow=true;orb.receiveShadow=true;orb.userData={baseY:orb.position.y,phase:i*1.17};
-    roomGroup.add(orb);
-  }
-  const ringMat=new THREE.MeshStandardMaterial({color:palette.accent,metalness:.72,roughness:.24});
-  const ring=new THREE.Mesh(new THREE.TorusGeometry(5.7,.035,8,64),ringMat);
-  ring.position.set(0,1.1,-5);ring.rotation.x=.25;roomGroup.add(ring);
-  orbGroup=roomGroup;
+  const floorMat=new THREE.MeshStandardMaterial({map:maps.albedo,roughnessMap:maps.roughness,metalnessMap:maps.metalness,normalMap:maps.normal,normalScale:new THREE.Vector2(.16,.16),color:palette.floor,roughness:.78,metalness:.04});
+  const floor=new THREE.Mesh(new THREE.PlaneGeometry(200,200),floorMat);
+  floor.rotation.x=-Math.PI/2;floor.position.y=-2.25;floor.receiveShadow=true;floor.userData.paletteRole='floor';roomGroup.add(floor);
+  const sky=new THREE.Mesh(new THREE.PlaneGeometry(200,100),new THREE.MeshBasicMaterial({color:palette.sky}));
+  sky.position.set(0,17,-38);sky.userData.paletteRole='sky';roomGroup.add(sky);
+  // Layered mountain silhouettes create a real horizon instead of floating decorative objects.
+  addSceneryShape([[-55,-1.7],[-48,5],[-40,1],[-31,10],[-23,2],[-13,8],[-3,1],[8,9],[19,2],[30,11],[40,2],[49,7],[57,-1.7]],-27,palette.far,'far');
+  addSceneryShape([[-55,-2],[-48,0],[-39,5],[-30,-.3],[-19,4],[-8,-.6],[3,5],[14,-.4],[25,4],[36,-.5],[47,3],[57,-2]],-20,palette.mid,'mid');
+  addSceneryShape([[-55,-2],[-48,-.4],[-39,1.2],[-29,-.6],[-17,1.8],[-5,-.7],[8,1.5],[19,-.5],[31,1.8],[43,-.5],[55,1.2],[58,-2]],-13,palette.near,'near');
+  // A flat, softly lit sun and broad clouds add depth without the old orb cluster.
+  const sun=new THREE.Mesh(new THREE.CircleGeometry(2.35,48),new THREE.MeshBasicMaterial({color:palette.sun}));
+  sun.position.set(7,7.2,-30);sun.userData.paletteRole='sun';roomGroup.add(sun);
+  addCloud(-10,7.1,-24,1.15,palette.cloud);addCloud(18,9,-25,.82,palette.cloud);addCloud(-25,10,-29,.68,palette.cloud);
+  // Small trees sit along the horizon as environmental detail.
+  for(const [x,z,s] of [[-17,-10,1.25],[-13,-9,.82],[15,-10,1.1],[20,-11,.8],[-31,-14,.75],[31,-14,.9]])addTree(x,z,s,palette.near);
+  // Keep the textured foreground floor and lighting for a grounded 3D look.
+  const path=new THREE.Mesh(new THREE.PlaneGeometry(8,35),new THREE.MeshStandardMaterial({color:palette.accent,roughness:.92,transparent:true,opacity:.16}));
+  path.rotation.x=-Math.PI/2;path.position.set(0,-2.22,1);path.userData.paletteRole='accent';roomGroup.add(path);
+  orbGroup=null;
 }
 function setupPostProcessing(){
   // Lightweight default stack: bloom only. SSAO and bokeh were the main frame-time cost.
@@ -149,16 +167,13 @@ async function init(){
 function setPalette(name){
   const p=palettes[name]||palettes.sunset;
   scene.background.setHex(p.sky);
-  if(roomGroup){
-    roomGroup.children.forEach((obj,i)=>{
-      if(obj.material&&obj.material.color){
-        if(obj.geometry?.type==='PlaneGeometry'&&obj.position.z===-34)obj.material.color.setHex(p.sky);
-        else if(obj.material.color.getHex()!==p.floor&&obj.geometry?.type==='PlaneGeometry')obj.material.color.setHex(p.floor);
-      }
-      if(obj.material&&obj.geometry?.type==='SphereGeometry')obj.material.color.setHex(p.accent);
-      if(obj.material&&obj.geometry?.type==='TorusGeometry')obj.material.color.setHex(p.accent);
-    });
-  }
+  if(!roomGroup)return;
+  roomGroup.children.forEach(obj=>{
+    const role=obj.userData?.paletteRole;
+    if(!role||!obj.material?.color)return;
+    const colors={sky:p.sky,floor:p.floor,far:p.far,mid:p.mid,near:p.near,tree:p.near,cloud:p.cloud,sun:p.sun,accent:p.accent};
+    if(colors[role]!==undefined)obj.material.color.setHex(colors[role]);
+  });
 }
 function render(time,sceneData={}){
   if(!ready||!renderer)return false;
@@ -168,15 +183,9 @@ function render(time,sceneData={}){
   const sceneName=sceneData.background||'sunset';
   if(sceneName!==lastScene){setPalette(sceneName);lastScene=sceneName;}
   const t=Number(time)||0;
-  if(orbGroup){
-    orbGroup.children.forEach(obj=>{
-      if(obj.userData&&obj.userData.baseY!==undefined){
-        obj.position.y=obj.userData.baseY+Math.sin(t*1.15+obj.userData.phase)*.28;
-        obj.rotation.y=t*.12+obj.userData.phase*.2;
-        obj.rotation.z=Math.sin(t*.55+obj.userData.phase)*.08;
-      }
-    });
-  }
+  roomGroup?.children.forEach(obj=>{
+    if(obj.userData?.baseX!==undefined)obj.position.x=obj.userData.baseX+Math.sin(t*.12+obj.userData.phase)*.18;
+  });
   camera.position.x=Math.sin(t*.16)*.24;
   camera.position.y=3.2+Math.sin(t*.23)*.12;
   camera.lookAt(0,0,-2);
