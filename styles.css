@@ -291,3 +291,33 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{
 .feature-teaser-status{margin-left:auto;white-space:nowrap;padding:6px 9px;border:1px solid #f5a4c655;border-radius:999px;background:#f5a4c610;color:#ffc0d8;font-size:9px;font-weight:800;letter-spacing:1px}
 @keyframes featureTeaserShimmer{0%,65%,100%{transform:translateX(-110%)}82%{transform:translateX(110%)}}
 @media(max-width:620px){.feature-teaser{min-height:56px;padding:9px 10px;gap:9px}.feature-teaser-copy strong{font-size:9px;letter-spacing:.7px}.feature-teaser-copy small{font-size:10px}.feature-teaser-status{font-size:8px;padding:5px 7px}}
+
+/* Beginning of Time campaign reveal + update document */
+.feature-teaser{flex-wrap:wrap}
+.campaign-countdown{font:800 12px 'Space Grotesk',sans-serif;color:#f7d9a2;font-variant-numeric:tabular-nums;letter-spacing:1px}
+.campaign-reveal{border:1px solid #a78bfa77;border-radius:9px;background:#a78bfa20;color:#e7dcff;padding:7px 12px;font-size:10px;font-weight:800;cursor:pointer}
+.campaign-reveal:hover{background:#a78bfa38}
+.campaign-doc-link{color:#f5b9d2;font-size:10px;font-weight:800;text-decoration:none}
+.campaign-doc-link[hidden]{display:none}
+.mesh-lab{margin-top:22px;padding:13px;border:1px solid #9b7bff55;border-radius:13px;background:linear-gradient(155deg,#211a34,#151421)}
+.mesh-lab-heading{display:flex;gap:10px;align-items:center;margin-bottom:10px}
+.mesh-lab-heading>span{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:#a78bfa22;color:#d8c7ff;font-size:20px}
+.mesh-lab-heading b,.mesh-lab-heading small{display:block}
+.mesh-lab-heading b{font-size:10px;letter-spacing:1px;color:#e6d9ff}
+.mesh-lab-heading small{font-size:9px;color:#9189a8;margin-top:3px}
+.mesh-add{border-style:solid}
+.mesh-object{margin-top:12px;padding:10px;border:1px solid #ffffff17;border-radius:10px;background:#0e0d17}
+.mesh-object-title{display:flex;align-items:center;justify-content:space-between;color:#e8ddff;font-size:11px}
+.mesh-remove{width:24px;height:24px;border:0;border-radius:7px;background:#65334c;color:#fff;font-size:17px;cursor:pointer}
+.update-document{position:fixed;z-index:10000;right:0;top:0;bottom:0;width:min(480px,94vw);overflow:auto;padding:22px;background:#11101b;border-left:1px solid #a78bfa55;box-shadow:-25px 0 70px #0009;transform:translateX(105%);visibility:hidden;transition:transform .25s,visibility .25s}
+.update-document.open{transform:translateX(0);visibility:visible}
+.update-document-head{position:sticky;top:-22px;display:flex;justify-content:space-between;align-items:center;margin:-22px -22px 24px;padding:18px 22px;background:#171525ed;backdrop-filter:blur(14px);border-bottom:1px solid #ffffff15;color:#bda9f4;font-size:9px;font-weight:900;letter-spacing:1.2px}
+.update-document-head button{border:0;background:#ffffff12;color:white;border-radius:8px;width:30px;height:30px;font-size:21px;cursor:pointer}
+.update-document article{max-width:620px;margin:auto;color:#d8d3e7}
+.update-document h1{font-size:32px;line-height:1.05;letter-spacing:-1.5px;color:#fff;margin:8px 0 12px}
+.update-document h2{font-size:15px;color:#d8c7ff;margin:25px 0 8px}
+.update-document p,.update-document li{font-size:12px;line-height:1.8;color:#b7b1c8}
+.update-document .update-eyebrow{font-size:9px;letter-spacing:1.4px;color:#f2aeca;font-weight:900}
+.update-document .update-lead{font-size:14px;color:#e2d8f8;line-height:1.65}
+.update-document .update-footnote{border-top:1px solid #ffffff17;padding-top:15px;color:#958da8;font-size:10px}
+@media(max-width:620px){.campaign-countdown{font-size:10px}.campaign-reveal{padding:6px 8px}.feature-teaser{align-items:center}}
