@@ -4,7 +4,7 @@
   const $ = (id) => document.getElementById(id);
   const state = {
     title: 'Untitled story', tab: 'characters', selected: 0, playing: false, vip: localStorage.getItem('cartoonlab-vip') === 'true',
-    elapsed: 0, lastFrame: 0, audioUrl: null, audioName: '', kokoro: null, kokoroLoading: false, kokoroPromise: null, voiceBuffer: null, voiceText: '', voiceName: 'af_heart', voiceSpeed: 1, voiceBufferSpeed: 1, ttsBackendUrl: localStorage.getItem('cartoonlab-rust-tts-url') || '', audioContext: null, voiceSource: null, analyser: null, analyserData: null, lipSync: { active:false, startedAt:0, utterance:null },
+    elapsed: 0, lastFrame: 0, audioUrl: null, audioName: '', kokoro: null, kokoroLoading: false, kokoroPromise: null, voiceBuffer: null, voiceText: '', voiceName: 'af_heart', voiceSpeed: 1, voiceBufferSpeed: 1, ttsBackendUrl: localStorage.getItem('cartoonlab-rust-tts-url') || '', ttsBackendKey: localStorage.getItem('cartoonlab-rust-tts-key') || '', audioContext: null, voiceSource: null, analyser: null, analyserData: null, lipSync: { active:false, startedAt:0, utterance:null },
     character: { name: 'Bloop', color: '#ff9cba', expression: 'happy', x: 640, size: 1, speech: 'What if...?', ttsText: 'What if...?' },
     scenes: [{ name: 'Opening scene', duration: 6, background: 'sunset', title: 'WHAT IF...?', subtitle: 'A tiny idea. A BIG adventure.', motion: 'bounce' }]
   };
@@ -183,7 +183,7 @@
   const totalDuration = () => state.scenes.reduce((n,s)=>n+s.duration,0);
   const currentTime = () => {
     let t=state.elapsed;
-    for(let i=0;i<state.scenes.length;i++){if(t<=state.scenes[i].duration || i===state.scenes.length-1)return {index:i,local:Math.min(t,state.scenes[i].duration)};t-=state.scenes[i].duration;}
+    for(let i=0;i<state.scenes.length;i++){if(t<state.scenes[i].duration || i===state.scenes.length-1)return {index:i,local:Math.min(t,state.scenes[i].duration)};t-=state.scenes[i].duration;}
     return {index:0,local:0};
   };
   function toast(message){const el=$('toast');el.textContent=message;el.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.remove('show'),2200);}
@@ -275,7 +275,7 @@
     if(rustEndpoint){
       const text=String(state.character.ttsText||'').trim(),voice=state.voiceName,speed=Number(state.voiceSpeed)||1;
       if(state.voiceBuffer&&state.voiceText===text&&state.voiceName===voice&&state.voiceBufferSpeed===speed)return state.voiceBuffer;
-      const response=await fetch(rustEndpoint+'/v1/audio/speech',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({input:text,voice,speed})});
+      const response=await fetch(rustEndpoint+'/v1/audio/speech',{method:'POST',headers:{'Content-Type':'application/json',...(state.ttsBackendKey?{Authorization:'Bearer '+state.ttsBackendKey}:{})},body:JSON.stringify({input:text,voice,speed})});
       if(!response.ok)throw new Error('Rust TTS server returned '+response.status+': '+(await response.text()).slice(0,180));
       const ac=audioContext();const buffer=await ac.decodeAudioData(await response.arrayBuffer());
       if(text!==String(state.character.ttsText||'').trim()||voice!==state.voiceName||speed!==state.voiceSpeed)return generateVoice();
@@ -615,7 +615,7 @@
     const tab=state.tab, c=state.character, s=selectedScene();document.querySelectorAll('.inspector-tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
     let html='';
     if(tab==='characters'){
-      html='<div class="inspector-section"><div class="section-title">MAIN CHARACTER</div>'+field('Character name','charName',c.name)+'<div class="section-title">SPEECH BUBBLE · ON-SCREEN ONLY</div>'+field('Bubble text','speechText',c.speech)+'<p class="muted-copy">This text appears in the scene. It does not control the voice.</p><div class="section-title">AI TEXT-TO-SPEECH · AUDIO ONLY</div>'+field('Text to speak','ttsText',c.ttsText||'')+'<label class="field"><span>Storytelling voice</span><select id="voiceChoice"><option value="af_heart">Heart · warm narrator</option><option value="af_bella">Bella · bright</option><option value="af_nicole">Nicole · gentle</option><option value="am_adam">Adam · deeper</option><option value="am_michael">Michael · friendly</option><option value="bf_emma">Emma · British</option><option value="bm_george">George · British deep</option></select></label><label class="field"><span>Speaking speed (×)</span><input id="voiceSpeed" type="number" step="any" inputmode="decimal" value="'+state.voiceSpeed+'"></label><label class="field"><span>Rust TTS server URL</span><input id="ttsBackendUrl" type="url" placeholder="https://your-rust-server.example" value="'+escapeHtml(state.ttsBackendUrl)+'"></label><button class="full-button" id="speakDialogue">▶ Generate + speak</button><p class="muted-copy">Uses the Rust Kokoro server when configured; otherwise Kokoro runs locally. Mouth movement follows the audio volume.</p></div>'+
+      html='<div class="inspector-section"><div class="section-title">MAIN CHARACTER</div>'+field('Character name','charName',c.name)+'<div class="section-title">SPEECH BUBBLE · ON-SCREEN ONLY</div>'+field('Bubble text','speechText',c.speech)+'<p class="muted-copy">This text appears in the scene. It does not control the voice.</p><div class="section-title">AI TEXT-TO-SPEECH · AUDIO ONLY</div>'+field('Text to speak','ttsText',c.ttsText||'')+'<label class="field"><span>Storytelling voice</span><select id="voiceChoice"><option value="af_heart">Heart · warm narrator</option><option value="af_bella">Bella · bright</option><option value="af_nicole">Nicole · gentle</option><option value="am_adam">Adam · deeper</option><option value="am_michael">Michael · friendly</option><option value="bf_emma">Emma · British</option><option value="bm_george">George · British deep</option></select></label><label class="field"><span>Speaking speed (×)</span><input id="voiceSpeed" type="number" step="any" inputmode="decimal" value="'+state.voiceSpeed+'"></label><label class="field"><span>Rust TTS server URL</span><input id="ttsBackendUrl" type="url" placeholder="https://your-rust-server.example" value="'+escapeHtml(state.ttsBackendUrl)+'"></label><label class="field"><span>Rust TTS access key (if enabled)</span><input id="ttsBackendKey" type="password" autocomplete="off" value="'+escapeHtml(state.ttsBackendKey)+'"></label><button class="full-button" id="speakDialogue">▶ Generate + speak</button><p class="muted-copy">Uses the Rust Kokoro server when configured; otherwise Kokoro runs locally. Mouth movement follows the audio volume.</p></div>'+
       '<div class="inspector-section"><div class="section-title">LOOK & FEEL</div>'+field('Character colour','charColor',c.color,'color')+
       '<label class="field"><span>Expression</span><div class="choice-row">'+['happy','surprised','curious','sad','angry','neutral'].map(x=>'<button class="choice '+(c.expression===x?'active':'')+'" data-expression="'+x+'">'+x[0].toUpperCase()+x.slice(1)+'</button>').join('')+'</div></label>'+
       '<label class="field"><span>Character size</span><input id="charSize" type="number" step="any" inputmode="decimal" value="'+c.size+'"></label>'+
@@ -659,6 +659,7 @@
     if($('voiceChoice')){$('voiceChoice').value=state.voiceName;$('voiceChoice').onchange=e=>{state.voiceName=e.target.value;state.voiceBuffer=null;state.voiceText='';};}
     bind('voiceSpeed',v=>{const n=Number(v);if(Number.isFinite(n)&&n>0){state.voiceSpeed=n;state.voiceBuffer=null;state.voiceText='';}});
     bind('ttsBackendUrl',v=>{state.ttsBackendUrl=v.trim();localStorage.setItem('cartoonlab-rust-tts-url',state.ttsBackendUrl);state.voiceBuffer=null;state.voiceText='';});
+    bind('ttsBackendKey',v=>{state.ttsBackendKey=v;localStorage.setItem('cartoonlab-rust-tts-key',v);state.voiceBuffer=null;state.voiceText='';});
     document.querySelectorAll('[data-expression]').forEach(b=>b.onclick=()=>{state.character.expression=b.dataset.expression;renderInspector();});
     if($('duplicateScene'))$('duplicateScene').onclick=()=>{const copy={...selectedScene(),name:selectedScene().name+' copy'};state.scenes.splice(state.selected+1,0,copy);state.selected++;renderTimeline();renderInspector();toast('Scene duplicated');};
     if($('deleteScene'))$('deleteScene').onclick=()=>{if(state.scenes.length===1){toast('Keep at least one scene');return;}state.scenes.splice(state.selected,1);state.selected=Math.max(0,state.selected-1);state.elapsed=0;renderTimeline();renderInspector();};
