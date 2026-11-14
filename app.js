@@ -766,11 +766,19 @@ bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedSc
   let campaignStart=0;
   try{campaignStart=Number(localStorage.getItem(CAMPAIGN_KEY))||0;if(!campaignStart){campaignStart=Date.now();localStorage.setItem(CAMPAIGN_KEY,String(campaignStart));}}catch(error){campaignStart=Date.now();}
   const campaignEnd=campaignStart+5*60*1000;
+  let compactHslReleased=false;
+  let compactHslReleaseNotified=false;
   function updateCampaignClock(){
     const remaining=Math.max(0,campaignEnd-Date.now()),seconds=Math.ceil(remaining/1000);
     const clock=$('campaignCountdown'),status=$('campaignStatus'),reveal=$('revealUpdate'),link=$('updateDocLink');
     if(clock)clock.textContent=String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0');
-    if(remaining===0){if(status)status.textContent='UPDATE READY';if(reveal)reveal.textContent='Open update';if(link)link.hidden=false;}
+    if(remaining===0){
+      compactHslReleased=true;
+      if(status)status.textContent='UPDATE READY';
+      if(reveal)reveal.textContent='Open update';
+      if(link)link.hidden=false;
+      if(!compactHslReleaseNotified){compactHslReleaseNotified=true;toast('HSL v4 unlocked · compact export is ready');}
+    }
   }
   updateCampaignClock();const campaignInterval=setInterval(()=>{updateCampaignClock();if(Date.now()>=campaignEnd)clearInterval(campaignInterval);},250);
   const updatePanel=$('updateDocument');
@@ -888,14 +896,27 @@ bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedSc
     const bytes=Uint8Array.from(binary,c=>c.charCodeAt(0));
     return JSON.parse(new TextDecoder().decode(bytes));
   }
+  const HSL4_KEYS={version:'z',title:'t',character:'c',extraCharacters:'x',meshObjects:'m',scenes:'s',selected:'i',elapsed:'e',vip:'v',voiceSpeed:'w',voiceName:'n',name:'a',duration:'d',background:'b',subtitle:'u',motion:'o',characterMotion:'q',x:'X',y:'Y',size:'S',color:'C',expression:'E',speech:'p',ttsText:'T',counterEnabled:'ce',counterMode:'cm',counterStart:'cs',counterEnd:'cn',counterCorner:'cc',layers:'l',keyframes:'k',vertices:'V',faces:'F',type:'g',id:'I',scale:'Z',rotationX:'rx',rotationY:'ry',rotationZ:'rz',visible:'vi',houseRoom:'hr',cameraMotion:'ca',cameraZoom:'cz',cameraX:'cx',cameraY:'cy',objectMotion:'om',rig:'r',armLeft:'al',armRight:'ar',legLeft:'ll',legRight:'lr'};
+  const HSL4_REVERSE=Object.fromEntries(Object.entries(HSL4_KEYS).map(([key,short])=>[short,key]));
+  function compactHslValue(value){
+    if(Array.isArray(value))return value.map(compactHslValue);
+    if(value&&typeof value==='object'){const out={};Object.entries(value).forEach(([key,item])=>{out[HSL4_KEYS[key]||key]=compactHslValue(item);});return out;}
+    return value;
+  }
+  function expandHslValue(value){
+    if(Array.isArray(value))return value.map(expandHslValue);
+    if(value&&typeof value==='object'){const out={};Object.entries(value).forEach(([key,item])=>{out[HSL4_REVERSE[key]||key]=expandHslValue(item);});return out;}
+    return value;
+  }
   function hypershortSource(){
+    if(compactHslReleased)return '!cartoonlab 4\\n!hsl-format 4\\n!hsl4 '+encodeHslPayload(compactHslValue(projectSnapshot()))+'\\n';
     const lines=['!cartoonlab 3','!hsl-format 3','!project '+encodeHslPayload(projectSnapshot())];
     state.scenes.forEach(scene=>{
       lines.push('@'+Math.max(.1,Number(scene.duration)||5)+' '+(scene.background||'sunset'));
       if(scene.title)lines.push('>'+JSON.stringify(scene.title));
       if(scene.subtitle)lines.push('_'+JSON.stringify(scene.subtitle));
     });
-    return lines.join('\n')+'\n';
+    return lines.join('\\n')+'\\n';
   }
   function downloadBlob(name,blob){
     const url=URL.createObjectURL(blob);
@@ -911,9 +932,11 @@ bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedSc
   }
   function importHypershort(source){
     const lines=String(source).split(/\r?\n/).map(line=>line.trim()).filter(line=>line&&!line.startsWith('//'));
+    const compactLine=lines.find(line=>line.startsWith('!hsl4 '));
     const payloadLine=lines.find(line=>line.startsWith('!project '));
-    if(payloadLine){
-      const project=decodeHslPayload(payloadLine.slice(9).trim());
+    if(compactLine||payloadLine){
+      const decoded=decodeHslPayload((compactLine||payloadLine).slice(compactLine?6:9).trim());
+      const project=compactLine?expandHslValue(decoded):decoded;
       if(!project||!Array.isArray(project.scenes)||!project.scenes.length)throw new Error('The HSL project data is invalid');
       const scenes=project.scenes.filter(scene=>scene&&typeof scene==='object'&&Number.isFinite(Number(scene.duration))&&Number(scene.duration)>0);
       if(!scenes.length)throw new Error('The HSL file contains no valid scenes');
