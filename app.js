@@ -4,7 +4,7 @@
   const $ = (id) => document.getElementById(id);
   const state = {
     title: 'Untitled story', tab: 'characters', selected: 0, playing: false, vip: localStorage.getItem('cartoonlab-vip') === 'true',
-    elapsed: 0, lastFrame: 0, audioUrl: null, audioName: '',
+    elapsed: 0, lastFrame: 0, audioUrl: null, audioName: '', lipSync: { active:false, startedAt:0, utterance:null },
     character: { name: 'Bloop', color: '#ff9cba', expression: 'happy', x: 640, size: 1, speech: 'What if...?' },
     scenes: [{ name: 'Opening scene', duration: 6, background: 'sunset', title: 'WHAT IF...?', subtitle: 'A tiny idea. A BIG adventure.', motion: 'bounce' }]
   };
@@ -103,6 +103,30 @@
     return {index:0,local:0};
   };
   function toast(message){const el=$('toast');el.textContent=message;el.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.remove('show'),2200);}
+  function mouthAmount(){
+    const lip=state.lipSync;
+    if(!lip.active)return 0;
+    const t=(performance.now()-lip.startedAt)/1000;
+    const phase=(t*8.2)%1;
+    return Math.min(1,Math.max(0,Math.sin(phase*Math.PI))*(.55+.45*Math.sin(t*17.3+Math.sin(t*5.1))));
+  }
+  function stopLipSync(){
+    if(state.lipSync.utterance){try{speechSynthesis.cancel();}catch(e){}}
+    state.lipSync.active=false;
+    const button=$('speakDialogue');if(button)button.textContent='▶ Speak + lip-sync';
+  }
+  function startLipSync(){
+    const text=String(state.character.speech||'').trim();
+    if(!text){toast('Add dialogue first');return;}
+    if(!('speechSynthesis' in window) || !('SpeechSynthesisUtterance' in window)){toast('Speech playback is not supported in this browser');return;}
+    stopLipSync();
+    const utterance=new SpeechSynthesisUtterance(text);
+    utterance.onstart=()=>{state.lipSync.active=true;state.lipSync.startedAt=performance.now();const b=$('speakDialogue');if(b)b.textContent='Ⅱ Stop speech';};
+    utterance.onend=()=>{state.lipSync.active=false;state.lipSync.utterance=null;const b=$('speakDialogue');if(b)b.textContent='▶ Speak + lip-sync';};
+    utterance.onerror=()=>{state.lipSync.active=false;state.lipSync.utterance=null;const b=$('speakDialogue');if(b)b.textContent='▶ Speak + lip-sync';toast('Speech playback could not start');};
+    state.lipSync.utterance=utterance;
+    speechSynthesis.speak(utterance);
+  }
   function drawCharacter(c, time, scene){
     const bob = scene.motion==='bounce' ? Math.sin(time*5)*15 : scene.motion==='float' ? Math.sin(time*2.2)*24 : 0;
     const x=c.x, y=475+bob, r=112*c.size;
@@ -124,7 +148,9 @@
     // mouth expressions
     ctx.strokeStyle='#38243d';ctx.fillStyle='#38243d';ctx.lineWidth=7*c.size;ctx.lineCap='round';
     ctx.beginPath();
-    if(c.expression==='happy'){ctx.arc(0,r*.08,r*.22,.15,Math.PI-.15);ctx.stroke();}
+    const talking=mouthAmount();
+    if(talking>.08){ctx.beginPath();ctx.ellipse(0,r*.16,r*(.075+talking*.075),r*(.035+talking*.17),0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#ff9aa9';ctx.beginPath();ctx.ellipse(0,r*(.19+talking*.08),r*.045,r*talking*.035,0,0,Math.PI*2);ctx.fill();}
+    else if(c.expression==='happy'){ctx.arc(0,r*.08,r*.22,.15,Math.PI-.15);ctx.stroke();}
     else if(c.expression==='surprised'){ctx.beginPath();ctx.ellipse(0,r*.16,r*.09,r*.15,0,0,Math.PI*2);ctx.fill();}
     else if(c.expression==='sad'){ctx.arc(0,r*.34,r*.2,Math.PI+0.2,Math.PI*2-.2);ctx.stroke();}
     else if(c.expression==='angry'){ctx.moveTo(-r*.16,r*.19);ctx.lineTo(r*.16,r*.19);ctx.stroke();ctx.beginPath();ctx.moveTo(-r*.45,-r*.42);ctx.lineTo(-r*.2,-r*.34);ctx.moveTo(r*.45,-r*.42);ctx.lineTo(r*.2,-r*.34);ctx.stroke();}
@@ -232,7 +258,7 @@
     const tab=state.tab, c=state.character, s=selectedScene();document.querySelectorAll('.inspector-tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
     let html='';
     if(tab==='characters'){
-      html='<div class="inspector-section"><div class="section-title">MAIN CHARACTER</div>'+field('Character name','charName',c.name)+field('Speech bubble text','speechText',c.speech)+'</div>'+
+      html='<div class="inspector-section"><div class="section-title">MAIN CHARACTER</div>'+field('Character name','charName',c.name)+field('Speech bubble text','speechText',c.speech)+'<button class="full-button" id="speakDialogue">▶ Speak + lip-sync</button><p class="muted-copy">Reads your dialogue aloud and animates the mouth automatically.</p></div>'+
       '<div class="inspector-section"><div class="section-title">LOOK & FEEL</div>'+field('Character colour','charColor',c.color,'color')+
       '<label class="field"><span>Expression</span><div class="choice-row">'+['happy','surprised','curious','sad','angry','neutral'].map(x=>'<button class="choice '+(c.expression===x?'active':'')+'" data-expression="'+x+'">'+x[0].toUpperCase()+x.slice(1)+'</button>').join('')+'</div></label>'+
       '<label class="field"><span>Character size</span><input id="charSize" type="range" min=".65" max="1.35" step=".05" value="'+c.size+'"></label>'+
@@ -259,6 +285,7 @@
     bind('charName',v=>state.character.name=v);bind('speechText',v=>state.character.speech=v);bind('charColor',v=>state.character.color=v);bind('charSize',v=>state.character.size=+v);bind('charX',v=>state.character.x=+v);
     bind('sceneName',v=>selectedScene().name=v);bind('sceneBg',v=>selectedScene().background=v,'change');bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedScene().subtitle=v);bind('sceneMotion',v=>selectedScene().motion=v,'change');
     bind('sceneDuration',v=>{selectedScene().duration=+v;renderTimeline();updateClock();});
+    if($('speakDialogue'))$('speakDialogue').onclick=()=>state.lipSync.active?stopLipSync():startLipSync();
     document.querySelectorAll('[data-expression]').forEach(b=>b.onclick=()=>{state.character.expression=b.dataset.expression;renderInspector();});
     if($('duplicateScene'))$('duplicateScene').onclick=()=>{const copy={...selectedScene(),name:selectedScene().name+' copy'};state.scenes.splice(state.selected+1,0,copy);state.selected++;renderTimeline();renderInspector();toast('Scene duplicated');};
     if($('deleteScene'))$('deleteScene').onclick=()=>{if(state.scenes.length===1){toast('Keep at least one scene');return;}state.scenes.splice(state.selected,1);state.selected=Math.max(0,state.selected-1);state.elapsed=0;renderTimeline();renderInspector();};
@@ -274,8 +301,8 @@
   if(vipButton)vipButton.onclick=()=>{state.vip=!state.vip;localStorage.setItem('cartoonlab-vip',String(state.vip));updateVipButton();toast(state.vip?'VIP mode enabled · watermark hidden':'VIP mode disabled · watermark restored');};
   updateVipButton();
   $('shareCode').onclick=shareProjectCode;
-  $('playButton').onclick=()=>{state.playing=!state.playing;$('playButton').textContent=state.playing?'Ⅱ':'▶';if(state.elapsed>=totalDuration())state.elapsed=0;};
-  $('restartButton').onclick=()=>{state.elapsed=0;state.playing=false;$('playButton').textContent='▶';};
+  $('playButton').onclick=()=>{stopLipSync();state.playing=!state.playing;$('playButton').textContent=state.playing?'Ⅱ':'▶';if(state.elapsed>=totalDuration())state.elapsed=0;};
+  $('restartButton').onclick=()=>{stopLipSync();state.elapsed=0;state.playing=false;$('playButton').textContent='▶';};
   $('scrubTrack').onclick=e=>{const r=e.currentTarget.getBoundingClientRect();state.elapsed=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))*totalDuration();};
   $('renameProject').onclick=()=>{const n=prompt('Name your story',state.title);if(n&&n.trim()){state.title=n.trim();$('projectTitle').textContent=state.title;}};
   $('newProject').onclick=()=>{if(!confirm('Start a new story? This replaces the current scenes.'))return;state.scenes=[{name:'Opening scene',duration:6,background:'sunset',title:'WHAT IF...?',subtitle:'A tiny idea. A BIG adventure.',motion:'bounce'}];state.selected=0;state.elapsed=0;state.title='Untitled story';$('projectTitle').textContent=state.title;renderTimeline();renderInspector();toast('New story created');};
