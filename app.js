@@ -327,7 +327,8 @@
     catch(error){console.error('Kokoro TTS:',error);toast('Voice failed: '+(error.message||'check your connection'));if(button)button.textContent='▶ Generate + speak';}
     finally{if(button)button.disabled=false;}
   }
-  function sceneLayersForSpeech(){return (state.scenes[currentTime().index]?.layers?.speech)!==false;}\n  function drawCharacter(c, time, scene){
+  function sceneLayersForSpeech(){return (state.scenes[currentTime().index]?.layers?.speech)!==false;}
+  function drawCharacter(c, time, scene){
     const movement=scene.characterMotion||({bounce:'bounce',float:'float',still:'idle'}[scene.motion]||'bounce');
     const cycle=time*(movement==='run'?10:movement==='walk'?5:3.5);
     const bob=movement==='bounce'?Math.abs(Math.sin(time*5))*22:movement==='float'?Math.sin(time*2.2)*24:movement==='jump'?Math.abs(Math.sin(time*2.8))*105:movement==='walk'?Math.abs(Math.sin(cycle))*7:movement==='run'?Math.abs(Math.sin(cycle))*13:movement==='wave'?Math.sin(time*3)*5:0;
@@ -487,7 +488,8 @@
     // The 3D landscape renderer is only used for ordinary scenes / fallback environments.
     const has3D=!!(window.CartoonLab3D&&window.CartoonLab3D.ready&&window.CartoonLab3D.render(state.elapsed,scene));
     if(has3D&&window.CartoonLab3D.canvas&&(scene.layers?.background!==false))ctx.drawImage(window.CartoonLab3D.canvas,0,0,1280,720);
-    const layers=scene.layers||{};\n    if(scene.houseRoom){if(layers.background!==false&&!has3D)drawHouseRoom(scene,state.elapsed);if(layers.character!==false)drawCharacter(studioCharacter(scene,activeTime.local),state.elapsed,scene);if(scene.title){ctx.save();ctx.textAlign='center';ctx.fillStyle='#fff';ctx.shadowColor='#0008';ctx.shadowBlur=12;ctx.font='800 42px Space Grotesk';ctx.fillText(scene.title,640,72);ctx.restore();}if(scene.subtitle){ctx.save();ctx.textAlign='center';ctx.fillStyle='#fff';ctx.font='500 20px DM Sans';ctx.fillText(scene.subtitle,640,108);ctx.restore();}}
+    const layers=scene.layers||{};
+    if(scene.houseRoom){if(layers.background!==false&&!has3D)drawHouseRoom(scene,state.elapsed);if(layers.character!==false)drawCharacter(studioCharacter(scene,activeTime.local),state.elapsed,scene);if(scene.title){ctx.save();ctx.textAlign='center';ctx.fillStyle='#fff';ctx.shadowColor='#0008';ctx.shadowBlur=12;ctx.font='800 42px Space Grotesk';ctx.fillText(scene.title,640,72);ctx.restore();}if(scene.subtitle){ctx.save();ctx.textAlign='center';ctx.fillStyle='#fff';ctx.font='500 20px DM Sans';ctx.fillText(scene.subtitle,640,108);ctx.restore();}}
     else if(layers.background!==false&&!has3D){const grad=ctx.createLinearGradient(0,0,0,720);grad.addColorStop(0,bg[0]);grad.addColorStop(.65,bg[1]);grad.addColorStop(1,bg[2]);ctx.fillStyle=grad;ctx.fillRect(0,0,1280,720);}
     if(scene.houseRoom){if(layers.counter!==false)drawCounter(scene,activeTime.local);return;}
     const t=state.elapsed, camera=scene.cameraMotion||'none';
@@ -498,7 +500,8 @@
     if(camera==='pan-right')panX=Math.sin(t*.8)*90;
     if(camera==='pan-up')panY=-Math.sin(t*.8)*65;
     if(camera==='shake'){shakeX=(Math.random()-.5)*9;shakeY=(Math.random()-.5)*9;}
-    zoom*=Number(scene.cameraZoom)||1;panX+=Number(scene.cameraX)||0;panY+=Number(scene.cameraY)||0;\n    ctx.save();ctx.translate(640+panX+shakeX,360+panY+shakeY);ctx.scale(zoom,zoom);ctx.translate(-640,-360);
+    zoom*=Number(scene.cameraZoom)||1;panX+=Number(scene.cameraX)||0;panY+=Number(scene.cameraY)||0;
+    ctx.save();ctx.translate(640+panX+shakeX,360+panY+shakeY);ctx.scale(zoom,zoom);ctx.translate(-640,-360);
     // Decorative stars and animated scene props.
     if(layers.props!==false)for(let i=0;i<34;i++){const x=(i*197+73)%1280,y=(i*113+39)%490;ctx.fillStyle='#ffffff'+(i%3?'35':'65');ctx.beginPath();ctx.arc(x,y,(i%3)+1.5,0,Math.PI*2);ctx.fill();}
     const props=scene.objectMotion||'sparkles';
@@ -516,7 +519,8 @@
     ctx.fillStyle='#ffffff13';ctx.beginPath();ctx.ellipse(640,660,560,65,0,0,Math.PI*2);ctx.fill();
     if(scene.title){ctx.textAlign='center';ctx.fillStyle='#fff';ctx.shadowColor='#241a3a88';ctx.shadowBlur=20;ctx.font='800 62px Space Grotesk';ctx.fillText(scene.title,640,100);ctx.shadowBlur=0;}
     if(scene.subtitle){ctx.textAlign='center';ctx.fillStyle='#fff';ctx.globalAlpha=.85;ctx.font='500 22px DM Sans';ctx.fillText(scene.subtitle,640,137);ctx.globalAlpha=1;}
-    if(state.onionSkin&&!state.playing){const prev=(scene.keyframes||[]).filter(k=>k.time<activeTime.local).slice(-1)[0];if(prev){ctx.save();ctx.globalAlpha=.18;drawCharacter({...state.character,...prev},state.elapsed-.08,scene);ctx.restore();}}\n    if(layers.character!==false)drawCharacter(studioCharacter(scene,activeTime.local),state.elapsed,scene);
+    if(state.onionSkin&&!state.playing){const prev=(scene.keyframes||[]).filter(k=>k.time<activeTime.local).slice(-1)[0];if(prev){ctx.save();ctx.globalAlpha=.18;drawCharacter({...state.character,...prev},state.elapsed-.08,scene);ctx.restore();}}
+    if(layers.character!==false)drawCharacter(studioCharacter(scene,activeTime.local),state.elapsed,scene);
     ctx.restore();
     if(layers.counter!==false)drawCounter(scene,activeTime.local);
     if(!state.vip){ctx.textAlign='left';ctx.fillStyle='#ffffff88';ctx.font='600 13px DM Sans';ctx.fillText('CARTOONLAB',35,680);}
