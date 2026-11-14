@@ -554,7 +554,7 @@
     if(!state.lastFrame)state.lastFrame=now;
     if(now-state.lastFrame<PLAYER_FRAME_INTERVAL){requestAnimationFrame(frame);return;}
     const dt=Math.min((now-state.lastFrame)/1000,.05);state.lastFrame=now;
-    if(state.playing){state.elapsed+=dt;if(state.elapsed>=totalDuration()){state.elapsed=0;state.playing=false;$('playButton').textContent='▶';}}
+    if(state.playing){state.elapsed+=dt;if(state.elapsed>=totalDuration()){state.elapsed=totalDuration();state.playing=false;$('playButton').textContent='▶';}}
     // Keep the preview smooth at 60 FPS while updating heavier editor controls at 24 FPS.
     if(!smoothPreviewActive)draw();
     if(!lastUiFrame||now-lastUiFrame>=UI_FRAME_INTERVAL){
