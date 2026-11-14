@@ -6,9 +6,17 @@
     title: 'Untitled story', tab: 'characters', selected: 0, playing: false, vip: localStorage.getItem('cartoonlab-vip') === 'true',
     elapsed: 0, lastFrame: 0, audioUrl: null, audioName: '', kokoro: null, kokoroLoading: false, kokoroPromise: null, voiceBuffer: null, voiceText: '', voiceName: 'af_heart', voiceSpeed: 1, voiceBufferSpeed: 1, audioContext: null, voiceSource: null, analyser: null, analyserData: null, lipSync: { active:false, startedAt:0, utterance:null },
     character: { name: 'Bloop', color: '#ff9cba', expression: 'happy', x: 640, size: 1, speech: 'What if...?', ttsText: 'What if...?' },
-    scenes: [{ name: 'Opening scene', duration: 3, background: 'sunset', title: 'WHAT IF...?', subtitle: 'A tiny idea. A BIG adventure.', motion: 'bounce' }]
+    scenes: [{ name: 'Opening scene', duration: 6, background: 'sunset', title: 'WHAT IF...?', subtitle: 'A tiny idea. A BIG adventure.', motion: 'bounce' }]
   };
   const PROJECT_KEY = 'cartoonlab-project-v1';
+  // One-time reset requested: discard the previous cartoon and start clean.
+  const RESET_KEY = 'cartoonlab-reset-all-v1';
+  try {
+    if (localStorage.getItem(RESET_KEY) !== 'true') {
+      localStorage.removeItem(PROJECT_KEY);
+      localStorage.setItem(RESET_KEY, 'true');
+    }
+  } catch (error) { console.warn('CartoonLab reset could not access local storage:', error); }
   let saveTimer = null;
   let smoothPreviewUrl=null,smoothPreviewRecorder=null,smoothPreviewTimer=null,smoothPreviewValid=false,smoothPreviewActive=false,smoothPreviewCancelled=false;
   const smoothVideo=$('smoothVideo');
@@ -153,7 +161,7 @@
       state.selected=Math.max(0,Math.min(state.scenes.length-1,Number(saved.selected)||0));
       state.elapsed=Math.max(0,Math.min(Number(saved.elapsed)||0,state.scenes.reduce((n,s)=>n+Number(s.duration||0),0)));
       if(typeof saved.vip==='boolean')state.vip=saved.vip;
-      if(Number.isFinite(Number(saved.voiceSpeed)))state.voiceSpeed=Math.max(.5,Math.min(2,Number(saved.voiceSpeed)));
+      if(Number.isFinite(Number(saved.voiceSpeed)))state.voiceSpeed=Number(saved.voiceSpeed);
       $('projectTitle').textContent=state.title;
     }catch(error){console.warn('CartoonLab could not restore the saved project:',error);}
   }
@@ -556,7 +564,7 @@
           const startX=e.clientX,startDuration=Number(scene.duration),direction=handle.classList.contains('scene-resize-left')?-1:1;
           const onMove=ev=>{
             const delta=(ev.clientX-startX)/34*direction;
-            scene.duration=Math.max(1,Math.min(60,Math.round((startDuration+delta)*2)/2));
+            scene.duration=Math.max(0.1,Math.round((startDuration+delta)*2)/2);
             card.style.flexBasis=Math.max(112,scene.duration*34)+'px';
             card.querySelector('small').textContent=scene.duration.toFixed(1)+' sec';
             updateClock();scheduleSave();
@@ -595,11 +603,11 @@
     const tab=state.tab, c=state.character, s=selectedScene();document.querySelectorAll('.inspector-tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
     let html='';
     if(tab==='characters'){
-      html='<div class="inspector-section"><div class="section-title">MAIN CHARACTER</div>'+field('Character name','charName',c.name)+'<div class="section-title">SPEECH BUBBLE · ON-SCREEN ONLY</div>'+field('Bubble text','speechText',c.speech)+'<p class="muted-copy">This text appears in the scene. It does not control the voice.</p><div class="section-title">AI TEXT-TO-SPEECH · AUDIO ONLY</div>'+field('Text to speak','ttsText',c.ttsText||'')+'<label class="field"><span>Storytelling voice</span><select id="voiceChoice"><option value="af_heart">Heart · warm narrator</option><option value="af_bella">Bella · bright</option><option value="af_nicole">Nicole · gentle</option><option value="am_adam">Adam · deeper</option><option value="am_michael">Michael · friendly</option><option value="bf_emma">Emma · British</option><option value="bm_george">George · British deep</option></select></label><label class="field"><span>Speaking speed · <b id="voiceSpeedValue">'+state.voiceSpeed.toFixed(1)+'×</b></span><input id="voiceSpeed" type="range" min="0.5" max="2" step="0.1" value="'+state.voiceSpeed+'"></label><button class="full-button" id="speakDialogue">▶ Generate + speak</button><p class="muted-copy">Kokoro AI voice runs on this device. First use downloads the model (about 80 MB); later uses are cached. Mouth movement follows the audio volume.</p></div>'+
+      html='<div class="inspector-section"><div class="section-title">MAIN CHARACTER</div>'+field('Character name','charName',c.name)+'<div class="section-title">SPEECH BUBBLE · ON-SCREEN ONLY</div>'+field('Bubble text','speechText',c.speech)+'<p class="muted-copy">This text appears in the scene. It does not control the voice.</p><div class="section-title">AI TEXT-TO-SPEECH · AUDIO ONLY</div>'+field('Text to speak','ttsText',c.ttsText||'')+'<label class="field"><span>Storytelling voice</span><select id="voiceChoice"><option value="af_heart">Heart · warm narrator</option><option value="af_bella">Bella · bright</option><option value="af_nicole">Nicole · gentle</option><option value="am_adam">Adam · deeper</option><option value="am_michael">Michael · friendly</option><option value="bf_emma">Emma · British</option><option value="bm_george">George · British deep</option></select></label><label class="field"><span>Speaking speed · <b id="voiceSpeedValue">'+state.voiceSpeed.toFixed(1)+'×</b></span><input id="voiceSpeed" type="range" min="0.01" max="10" step="0.01" value="'+state.voiceSpeed+'"></label><button class="full-button" id="speakDialogue">▶ Generate + speak</button><p class="muted-copy">Kokoro AI voice runs on this device. First use downloads the model (about 80 MB); later uses are cached. Mouth movement follows the audio volume.</p></div>'+
       '<div class="inspector-section"><div class="section-title">LOOK & FEEL</div>'+field('Character colour','charColor',c.color,'color')+
       '<label class="field"><span>Expression</span><div class="choice-row">'+['happy','surprised','curious','sad','angry','neutral'].map(x=>'<button class="choice '+(c.expression===x?'active':'')+'" data-expression="'+x+'">'+x[0].toUpperCase()+x.slice(1)+'</button>').join('')+'</div></label>'+
-      '<label class="field"><span>Character size</span><input id="charSize" type="range" min=".65" max="1.35" step=".05" value="'+c.size+'"></label>'+
-      '<label class="field"><span>Stage position</span><input id="charX" type="range" min="180" max="1100" step="10" value="'+c.x+'"></label></div>'+
+      '<label class="field"><span>Character size</span><input id="charSize" type="range" min="0.01" max="20" step="0.01" value="'+c.size+'"></label>'+
+      '<label class="field"><span>Stage position</span><input id="charX" type="range" min="-100000" max="100000" step="1" value="'+c.x+'"></label></div>'+
       '<button class="full-button" id="addCharacter">＋ Add another character (coming soon)</button><p class="muted-copy">Tip: change the expression between scenes to make reactions feel alive.</p>';
     } else if(tab==='scenes'){
       html='<div class="inspector-section"><div class="section-title">SCENE SETTINGS</div>'+field('Scene name','sceneName',s.name)+
@@ -615,7 +623,7 @@
       '<label class="field"><span>Corner</span><select id="counterCorner">'+[['top-right','Top right'],['top-left','Top left'],['bottom-right','Bottom right'],['bottom-left','Bottom left']].map(([v,l])=>'<option value="'+v+'" '+((s.counterCorner||'top-right')===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>'+
       '<div class="section-title">SCENE OBJECTS</div><label class="field"><span>Background motion</span><select id="objectMotion">'+[['sparkles','Floating sparkles'],['bubbles','Bubbles'],['hearts','Hearts'],['rise','Rising particles'],['orbit','Orbiting sparkles'],['fast','Fast sparkles'],['none','None']].map(([v,l])=>'<option value="'+v+'" '+((s.objectMotion||'sparkles')===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>'+
       '<label class="field"><span>Legacy motion style</span><select id="sceneMotion"><option value="bounce" '+(s.motion==='bounce'?'selected':'')+'>Bouncy</option><option value="float" '+(s.motion==='float'?'selected':'')+'>Floaty</option><option value="still" '+(s.motion==='still'?'selected':'')+'>Still</option></select></label>'+
-      '<label class="field"><span>Scene duration · '+s.duration.toFixed(1)+'s</span><input id="sceneDuration" type="range" min="2" max="20" step=".5" value="'+s.duration+'"></label></div>'+
+      '<label class="field"><span>Scene duration · '+s.duration.toFixed(1)+'s</span><input id="sceneDuration" type="range" min="0.1" max="10000" step="0.1" value="'+s.duration+'"></label></div>'+
       '<button class="full-button" id="duplicateScene">▣ Duplicate scene</button><button class="full-button" id="deleteScene" title="Delete selected scene (Backspace)" style="margin-top:8px">− Delete scene</button>';
     } else {
       html='<div class="inspector-section"><div class="section-title">AUDIO & VOICE</div><p class="muted-copy">Add your own narration or music track. Audio stays in this browser session.</p>'+
@@ -637,7 +645,7 @@
     bind('sceneDuration',v=>{selectedScene().duration=+v;renderTimeline();updateClock();});
     if($('speakDialogue'))$('speakDialogue').onclick=()=>state.lipSync.active?stopLipSync():startLipSync();
     if($('voiceChoice')){$('voiceChoice').value=state.voiceName;$('voiceChoice').onchange=e=>{state.voiceName=e.target.value;state.voiceBuffer=null;state.voiceText='';};}
-    bind('voiceSpeed',v=>{state.voiceSpeed=Math.max(.5,Math.min(2,Number(v)||1));state.voiceBuffer=null;state.voiceText='';const label=$('voiceSpeedValue');if(label)label.textContent=state.voiceSpeed.toFixed(1)+'×';});
+    bind('voiceSpeed',v=>{state.voiceSpeed=Number(v)||1;state.voiceBuffer=null;state.voiceText='';const label=$('voiceSpeedValue');if(label)label.textContent=state.voiceSpeed.toFixed(1)+'×';});
     document.querySelectorAll('[data-expression]').forEach(b=>b.onclick=()=>{state.character.expression=b.dataset.expression;renderInspector();});
     if($('duplicateScene'))$('duplicateScene').onclick=()=>{const copy={...selectedScene(),name:selectedScene().name+' copy'};state.scenes.splice(state.selected+1,0,copy);state.selected++;renderTimeline();renderInspector();toast('Scene duplicated');};
     if($('deleteScene'))$('deleteScene').onclick=()=>{if(state.scenes.length===1){toast('Keep at least one scene');return;}state.scenes.splice(state.selected,1);state.selected=Math.max(0,state.selected-1);state.elapsed=0;renderTimeline();renderInspector();};
