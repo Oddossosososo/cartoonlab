@@ -7,7 +7,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { BokehPass } from 'three/addons/postprocessing/BokehPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 
-const W=1280,H=720;
+const W=1280,H=720,RENDER_W=960,RENDER_H=540,RENDER_INTERVAL=1000/24;
 const palettes={
   sunset:{sky:0x302044,floor:0x8c6370,accent:0xffa17e},
   sky:{sky:0x31577a,floor:0x6c9bb4,accent:0x9ce5ff},
@@ -17,7 +17,7 @@ const palettes={
   studio:{sky:0x29283d,floor:0x55516d,accent:0xb5a5ff}
 };
 
-function canvasTexture(draw,size=1024){
+function canvasTexture(draw,size=512){
   const canvas=document.createElement('canvas');canvas.width=canvas.height=size;
   const c=canvas.getContext('2d');draw(c,size);
   const texture=new THREE.CanvasTexture(canvas);
@@ -29,7 +29,7 @@ function canvasTexture(draw,size=1024){
 function makePBRMaps(){
   const albedo=canvasTexture((c,s)=>{
     c.fillStyle='#887c82';c.fillRect(0,0,s,s);
-    for(let i=0;i<22000;i++){
+    for(let i=0;i<4500;i++){
       const v=105+Math.random()*85;c.fillStyle='rgba('+v+','+(v-5)+','+(v+3)+',0.12)';
       c.fillRect(Math.random()*s,Math.random()*s,1+Math.random()*4,1+Math.random()*3);
     }
@@ -38,7 +38,7 @@ function makePBRMaps(){
   });
   const roughness=canvasTexture((c,s)=>{
     c.fillStyle='#b8b8b8';c.fillRect(0,0,s,s);
-    for(let i=0;i<18000;i++){const v=110+Math.random()*130;c.fillStyle='rgb('+v+','+v+','+v+')';c.fillRect(Math.random()*s,Math.random()*s,2,2);}
+    for(let i=0;i<3500;i++){const v=110+Math.random()*130;c.fillStyle='rgb('+v+','+v+','+v+')';c.fillRect(Math.random()*s,Math.random()*s,2,2);}
   });
   roughness.colorSpace=THREE.NoColorSpace;
   const metalness=canvasTexture((c,s)=>{
@@ -48,7 +48,7 @@ function makePBRMaps(){
   metalness.colorSpace=THREE.NoColorSpace;
   const normal=canvasTexture((c,s)=>{
     c.fillStyle='rgb(128,128,255)';c.fillRect(0,0,s,s);
-    for(let i=0;i<16000;i++){const x=Math.random()*s,y=Math.random()*s,v=115+Math.random()*26;c.fillStyle='rgb('+v+','+(v+Math.random()*10)+',255)';c.fillRect(x,y,2+Math.random()*5,2+Math.random()*5);}
+    for(let i=0;i<3000;i++){const x=Math.random()*s,y=Math.random()*s,v=115+Math.random()*26;c.fillStyle='rgb('+v+','+(v+Math.random()*10)+',255)';c.fillRect(x,y,2+Math.random()*5,2+Math.random()*5);}
   });
   normal.colorSpace=THREE.NoColorSpace;
   return {albedo,roughness,metalness,normal};
@@ -60,12 +60,12 @@ const grainShader={
 };
 
 let renderer,composer,scene,camera,ready=false,webgpu=false,grainPass,roomGroup,orbGroup,pmrem;
-let lastScene='';
+let lastScene='',lastRenderAt=0;
 let renderCanvas=null;
 const clock=new THREE.Clock();
 
 function makeRenderer(){
-  const params={antialias:true,alpha:false,powerPreference:'high-performance'};
+  const params={antialias:false,alpha:false,powerPreference:'low-power'};
   // WebGPU is opt-in until its post-processing stack is available in the browser.
   // Use ?renderer=webgpu to test it; WebGL remains the full cinematic-effects path.
   const wantsGPU=new URLSearchParams(location.search).get('renderer')==='webgpu';
@@ -94,33 +94,29 @@ function addRoomObjects(palette,maps){
   });
   for(let i=0;i<5;i++){
     const radius=1.05+(i%3)*.38;
-    const orb=new THREE.Mesh(new THREE.SphereGeometry(radius,64,48),sphereMat.clone());
+    const orb=new THREE.Mesh(new THREE.SphereGeometry(radius,32,20),sphereMat.clone());
     orb.position.set((i-2)*3.25,-.35+(i%2)*.55,-3-(i%3)*1.2);
     orb.castShadow=true;orb.receiveShadow=true;orb.userData={baseY:orb.position.y,phase:i*1.17};
     roomGroup.add(orb);
   }
   const ringMat=new THREE.MeshStandardMaterial({color:palette.accent,metalness:.72,roughness:.24});
-  const ring=new THREE.Mesh(new THREE.TorusGeometry(5.7,.035,12,160),ringMat);
+  const ring=new THREE.Mesh(new THREE.TorusGeometry(5.7,.035,8,64),ringMat);
   ring.position.set(0,1.1,-5);ring.rotation.x=.25;roomGroup.add(ring);
   orbGroup=roomGroup;
 }
 function setupPostProcessing(){
+  // Lightweight default stack: bloom only. SSAO and bokeh were the main frame-time cost.
   composer=new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene,camera));
-  const ssao=new SSAOPass(scene,camera,W,H);
-  ssao.kernelRadius=12;ssao.minDistance=.005;ssao.maxDistance=.12;
-  composer.addPass(ssao);
-  const bloom=new UnrealBloomPass(new THREE.Vector2(W,H),.22,.65,.82);
+  const bloom=new UnrealBloomPass(new THREE.Vector2(RENDER_W,RENDER_H),.14,.45,.9);
   composer.addPass(bloom);
-  const bokeh=new BokehPass(scene,camera,{focus:10,aperture:.000012,maxblur:.0015,width:W,height:H});
-  composer.addPass(bokeh);
   grainPass=new ShaderPass(grainShader);composer.addPass(grainPass);
 }
 async function init(){
   renderCanvas=document.createElement('canvas');renderCanvas.width=W;renderCanvas.height=H;
   renderer=await makeRenderer();
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.5));
-  renderer.setSize(W,H,false);
+  renderer.setPixelRatio(1);
+  renderer.setSize(RENDER_W,RENDER_H,false);
   renderer.outputColorSpace=THREE.SRGBColorSpace;
   renderer.toneMapping=THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure=1.08;
@@ -166,6 +162,9 @@ function setPalette(name){
 }
 function render(time,sceneData={}){
   if(!ready||!renderer)return false;
+  const now=performance.now();
+  if(now-lastRenderAt<RENDER_INTERVAL)return true;
+  lastRenderAt=now;
   const sceneName=sceneData.background||'sunset';
   if(sceneName!==lastScene){setPalette(sceneName);lastScene=sceneName;}
   const t=Number(time)||0;
