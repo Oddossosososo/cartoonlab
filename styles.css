@@ -33,3 +33,6 @@ button, a, [role="button"], .scrub-track, .scene-resize, .scene-drag{cursor:poin
 .scene-drag:active{cursor:grabbing}
 input:not([type="range"]):not([type="color"]), textarea, [contenteditable="true"]{cursor:text}
 input[type="range"], input[type="color"]{cursor:pointer}
+
+/* Native compressed-video preview: browser handles decoding, buffering and playback. */
+#smoothVideo{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#08070d;display:none}#smoothPreview:disabled{opacity:.55;cursor:wait}
