@@ -143,7 +143,7 @@
     updateVoiceLoadUI({title:'Preparing AI voice…',detail:'Checking the browser cache and loading model files.'});
     state.kokoroPromise=(async()=>{
       try{
-        const {KokoroTTS}=await import('https://esm.sh/kokoro-js@1.2.1');
+        const {KokoroTTS}=await import('https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1');
         const model=await KokoroTTS.from_pretrained('onnx-community/Kokoro-82M-v1.0-ONNX',{
           dtype:'q8',device:'wasm',
           progress_callback:(progress)=>{
