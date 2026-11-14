@@ -360,6 +360,7 @@
   function draw(){
     const scene=selectedScene(), bg=backgrounds[scene.background]||backgrounds.sunset;
     const has3D=!!(window.CartoonLab3D&&window.CartoonLab3D.ready&&window.CartoonLab3D.render(state.elapsed,scene));
+    if(has3D&&window.CartoonLab3D.canvas)ctx.drawImage(window.CartoonLab3D.canvas,0,0,1280,720);
     if(scene.houseRoom){if(!has3D)drawHouseRoom(scene,state.elapsed);drawCharacter(state.character,state.elapsed,scene);if(scene.title){ctx.save();ctx.textAlign='center';ctx.fillStyle='#fff';ctx.shadowColor='#0008';ctx.shadowBlur=12;ctx.font='800 42px Space Grotesk';ctx.fillText(scene.title,640,72);ctx.restore();}if(scene.subtitle){ctx.save();ctx.textAlign='center';ctx.fillStyle='#fff';ctx.font='500 20px DM Sans';ctx.fillText(scene.subtitle,640,108);ctx.restore();}}
     else if(!has3D){const grad=ctx.createLinearGradient(0,0,0,720);grad.addColorStop(0,bg[0]);grad.addColorStop(.65,bg[1]);grad.addColorStop(1,bg[2]);ctx.fillStyle=grad;ctx.fillRect(0,0,1280,720);}
     if(scene.houseRoom){if(scene.counterEnabled){const local=currentTime().local;const value=(Number(scene.counterStart)||0)+Math.floor(local/Math.max(.25,Number(scene.counterInterval)||1))*(Number(scene.counterStep)||0);ctx.save();ctx.font='800 25px Space Grotesk';ctx.fillStyle='#171326dd';roundRect(ctx,1080,22,175,52,14);ctx.fill();ctx.fillStyle='#fff';ctx.textAlign='center';ctx.fillText((scene.counterLabel||'DAY')+' '+value,1167,56);ctx.restore();}return;}
