@@ -10,6 +10,76 @@
   };
   const PROJECT_KEY = 'cartoonlab-project-v1';
   let saveTimer = null;
+  let smoothPreviewUrl=null,smoothPreviewRecorder=null,smoothPreviewTimer=null,smoothPreviewValid=false,smoothPreviewActive=false,smoothPreviewCancelled=false;
+  const smoothVideo=$('smoothVideo');
+  function hideSmoothVideo(){
+    if(!smoothVideo)return;
+    smoothVideo.pause();smoothVideo.style.display='none';canvas.style.display='block';smoothPreviewActive=false;
+  }
+  function clearSmoothPreview(){
+    smoothPreviewCancelled=true;
+    if(smoothPreviewTimer){clearTimeout(smoothPreviewTimer);smoothPreviewTimer=null;}
+    if(smoothPreviewRecorder&&smoothPreviewRecorder.state!=='inactive'){try{smoothPreviewRecorder.stop();}catch(error){}}
+    smoothPreviewRecorder=null;
+    hideSmoothVideo();
+    if(smoothPreviewUrl){URL.revokeObjectURL(smoothPreviewUrl);smoothPreviewUrl=null;}
+    smoothPreviewValid=false;
+    const button=$('smoothPreview');if(button){button.disabled=false;button.textContent='Smooth preview';}
+  }
+  async function renderSmoothPreview(){
+    const button=$('smoothPreview');
+    if(!canvas.captureStream||!window.MediaRecorder||!smoothVideo){toast('Compressed preview is not supported in this browser');return;}
+    if(smoothPreviewValid&&smoothPreviewUrl){
+      canvas.style.display='none';smoothVideo.style.display='block';smoothPreviewActive=true;
+      smoothVideo.currentTime=0;
+      try{await smoothVideo.play();}catch(error){toast('Press play on the video preview to start playback');}
+      return;
+    }
+    clearSmoothPreview();smoothPreviewCancelled=false;
+    button.disabled=true;button.textContent='Rendering…';
+    state.playing=false;state.elapsed=0;state.lastFrame=0;$('playButton').textContent='▶';
+    draw();
+    let stream=null;
+    try{
+      stream=canvas.captureStream(30);
+      const memory=Number(navigator.deviceMemory)||4;
+      const cores=Number(navigator.hardwareConcurrency)||4;
+      const videoBitsPerSecond=(memory<=2||cores<=2)?2200000:(memory<=4||cores<=4)?3800000:6000000;
+      const candidates=['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'];
+      const mimeType=candidates.find(type=>MediaRecorder.isTypeSupported(type))||'';
+      const options={videoBitsPerSecond};if(mimeType)options.mimeType=mimeType;
+      const recorder=new MediaRecorder(stream,options);
+      smoothPreviewRecorder=recorder;
+      const chunks=[];
+      recorder.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data);};
+      recorder.onerror=e=>{console.error('Smooth preview encoding failed:',e.error||e);smoothPreviewCancelled=true;toast('Smooth preview failed to encode');};
+      recorder.onstop=()=>{
+        stream.getTracks().forEach(track=>track.stop());
+        smoothPreviewRecorder=null;
+        if(smoothPreviewCancelled){button.disabled=false;button.textContent='Smooth preview';return;}
+        const blob=new Blob(chunks,{type:recorder.mimeType||'video/webm'});
+        if(!blob.size){button.disabled=false;button.textContent='Smooth preview';toast('Preview recording was empty');return;}
+        smoothPreviewUrl=URL.createObjectURL(blob);smoothPreviewValid=true;
+        smoothVideo.src=smoothPreviewUrl;smoothVideo.load();
+        canvas.style.display='none';smoothVideo.style.display='block';smoothPreviewActive=true;
+        button.disabled=false;button.textContent='↻ Re-render preview';
+        smoothVideo.play().catch(()=>toast('Preview ready — press play to watch'));
+        toast('Compressed preview ready · native video playback');
+      };
+      recorder.start(250);
+      state.playing=true;$('playButton').textContent='Ⅱ';
+      toast('Rendering compressed preview…');
+      smoothPreviewTimer=setTimeout(()=>{
+        smoothPreviewTimer=null;
+        if(recorder.state!=='inactive')recorder.stop();
+        state.playing=false;$('playButton').textContent='▶';
+      },Math.max(1,totalDuration())*1000+80);
+    }catch(error){
+      if(stream)stream.getTracks().forEach(track=>track.stop());
+      smoothPreviewRecorder=null;state.playing=false;button.disabled=false;button.textContent='Smooth preview';
+      console.error('Smooth preview:',error);toast('Preview failed: '+(error.message||'unsupported video encoder'));
+    }
+  }
   function projectSnapshot(){
     return {version:1,title:state.title,character:state.character,scenes:state.scenes,selected:state.selected,elapsed:state.elapsed,vip:state.vip,voiceSpeed:state.voiceSpeed};
   }
@@ -87,9 +157,12 @@
     }catch(error){console.warn('CartoonLab could not restore the saved project:',error);}
   }
   restoreProject();
-  document.addEventListener('input',scheduleSave);
-  document.addEventListener('change',scheduleSave);
-  document.addEventListener('click',scheduleSave);
+  document.addEventListener('input',()=>{clearSmoothPreview();scheduleSave();});
+  document.addEventListener('change',()=>{clearSmoothPreview();scheduleSave();});
+  document.addEventListener('click',e=>{
+    if(!e.target.closest('#smoothPreview,#playButton,#restartButton,#scrubTrack,.scene-card,.nav-item,.inspector-tab'))clearSmoothPreview();
+    scheduleSave();
+  });
   window.addEventListener('beforeunload',saveProject);
   const backgrounds = {
     sunset: ['#261b46','#ef8a9c','#ffc58d'], sky: ['#1c3558','#6bb6e9','#c5eaff'],
@@ -428,7 +501,7 @@
     const dt=Math.min((now-state.lastFrame)/1000,.05);state.lastFrame=now;
     if(state.playing){state.elapsed+=dt;if(state.elapsed>=totalDuration()){state.elapsed=0;state.playing=false;$('playButton').textContent='▶';}}
     // Keep the preview smooth at 60 FPS while updating heavier editor controls at 24 FPS.
-    draw();
+    if(!smoothPreviewActive)draw();
     if(!lastUiFrame||now-lastUiFrame>=UI_FRAME_INTERVAL){
       lastUiFrame=now;
       const cur=currentTime();if(cur.index!==state.selected){state.selected=cur.index;renderTimeline();renderInspector();}
@@ -575,9 +648,11 @@
   if(vipButton)vipButton.onclick=()=>{state.vip=!state.vip;localStorage.setItem('cartoonlab-vip',String(state.vip));updateVipButton();toast(state.vip?'VIP mode enabled · watermark hidden':'VIP mode disabled · watermark restored');};
   updateVipButton();
   $('shareCode').onclick=shareProjectCode;
-  $('playButton').onclick=()=>{stopLipSync();state.playing=!state.playing;$('playButton').textContent=state.playing?'Ⅱ':'▶';if(state.elapsed>=totalDuration())state.elapsed=0;};
-  $('restartButton').onclick=()=>{stopLipSync();state.elapsed=0;state.playing=false;$('playButton').textContent='▶';};
-  $('scrubTrack').onclick=e=>{const r=e.currentTarget.getBoundingClientRect();state.elapsed=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))*totalDuration();};
+  $('smoothPreview').onclick=renderSmoothPreview;
+  smoothVideo.addEventListener('ended',()=>{smoothPreviewActive=true;});
+  $('playButton').onclick=()=>{if(smoothPreviewActive)hideSmoothVideo();stopLipSync();state.playing=!state.playing;$('playButton').textContent=state.playing?'Ⅱ':'▶';if(state.elapsed>=totalDuration())state.elapsed=0;};
+  $('restartButton').onclick=()=>{if(smoothPreviewActive)hideSmoothVideo();stopLipSync();state.elapsed=0;state.playing=false;$('playButton').textContent='▶';};
+  $('scrubTrack').onclick=e=>{if(smoothPreviewActive)hideSmoothVideo();const r=e.currentTarget.getBoundingClientRect();state.elapsed=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))*totalDuration();};
   $('renameProject').onclick=()=>{const n=prompt('Name your story',state.title);if(n&&n.trim()){state.title=n.trim();$('projectTitle').textContent=state.title;}};
   $('newProject').onclick=()=>{if(!confirm('Start a new story? This replaces the current scenes.'))return;state.scenes=[{name:'Opening scene',duration:6,background:'sunset',title:'WHAT IF...?',subtitle:'A tiny idea. A BIG adventure.',motion:'bounce'}];state.selected=0;state.elapsed=0;state.title='Untitled story';$('projectTitle').textContent=state.title;renderTimeline();renderInspector();toast('New story created');};
   $('fullscreen').onclick=()=>{const el=$('stageWrap');if(!document.fullscreenElement)el.requestFullscreen?.();else document.exitFullscreen?.();};
