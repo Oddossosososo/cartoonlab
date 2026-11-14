@@ -6,7 +6,7 @@
     title: 'Untitled story', tab: 'characters', selected: 0, playing: false, vip: localStorage.getItem('cartoonlab-vip') === 'true',
     elapsed: 0, lastFrame: 0, audioUrl: null, audioName: '', lipSync: { active:false, startedAt:0, utterance:null },
     character: { name: 'Bloop', color: '#ff9cba', expression: 'happy', x: 640, size: 1, speech: 'What if...?' },
-    scenes: [{ name: 'Opening scene', duration: 6, background: 'sunset', title: 'WHAT IF...?', subtitle: 'A tiny idea. A BIG adventure.', motion: 'bounce' }]
+    scenes: [{ name: 'Opening scene', duration: 3, background: 'sunset', title: 'WHAT IF...?', subtitle: 'A tiny idea. A BIG adventure.', motion: 'bounce' }]
   };
   const PROJECT_KEY = 'cartoonlab-project-v1';
   let saveTimer = null;
@@ -77,7 +77,7 @@
       if(!saved || saved.version!==1 || !Array.isArray(saved.scenes) || !saved.scenes.length)return;
       if(saved.character && typeof saved.character==='object')state.character={...state.character,...saved.character};
       state.scenes=saved.scenes.filter(s=>s && typeof s==='object' && Number.isFinite(Number(s.duration)) && Number(s.duration)>0);
-      if(!state.scenes.length)state.scenes=[{name:'Opening scene',duration:6,background:'sunset',title:'WHAT IF...?',subtitle:'A tiny idea. A BIG adventure.',motion:'bounce'}];
+      if(!state.scenes.length)state.scenes=[{name:'Opening scene',duration:3,background:'sunset',title:'WHAT IF...?',subtitle:'A tiny idea. A BIG adventure.',motion:'bounce'}];
       state.title=typeof saved.title==='string' && saved.title ? saved.title : state.title;
       state.selected=Math.max(0,Math.min(state.scenes.length-1,Number(saved.selected)||0));
       state.elapsed=Math.max(0,Math.min(Number(saved.elapsed)||0,state.scenes.reduce((n,s)=>n+Number(s.duration||0),0)));
@@ -107,8 +107,8 @@
     const lip=state.lipSync;
     if(!lip.active)return 0;
     const t=(performance.now()-lip.startedAt)/1000;
-    const phase=(t*8.2)%1;
-    return Math.min(1,Math.max(0,Math.sin(phase*Math.PI))*(.55+.45*Math.sin(t*17.3+Math.sin(t*5.1))));
+    const phase=(t*7.4)%1;
+    return Math.min(1,Math.max(0,Math.sin(phase*Math.PI))*(.5+.5*Math.sin(t*13.1+Math.sin(t*4.2))));
   }
   function stopLipSync(){
     if(state.lipSync.utterance){try{speechSynthesis.cancel();}catch(e){}}
@@ -121,7 +121,11 @@
     if(!('speechSynthesis' in window) || !('SpeechSynthesisUtterance' in window)){toast('Speech playback is not supported in this browser');return;}
     stopLipSync();
     const utterance=new SpeechSynthesisUtterance(text);
+    utterance.rate=1;utterance.pitch=1;
     utterance.onstart=()=>{state.lipSync.active=true;state.lipSync.startedAt=performance.now();const b=$('speakDialogue');if(b)b.textContent='Ⅱ Stop speech';};
+    utterance.onboundary=()=>{state.lipSync.active=true;state.lipSync.startedAt=performance.now()-80;};
+    utterance.onpause=()=>{state.lipSync.active=false;};
+    utterance.onresume=()=>{state.lipSync.active=true;state.lipSync.startedAt=performance.now();};
     utterance.onend=()=>{state.lipSync.active=false;state.lipSync.utterance=null;const b=$('speakDialogue');if(b)b.textContent='▶ Speak + lip-sync';};
     utterance.onerror=()=>{state.lipSync.active=false;state.lipSync.utterance=null;const b=$('speakDialogue');if(b)b.textContent='▶ Speak + lip-sync';toast('Speech playback could not start');};
     state.lipSync.utterance=utterance;
@@ -214,7 +218,8 @@
       card.tabIndex=0;
       card.setAttribute('role','button');
       card.setAttribute('aria-label','Select '+scene.name);
-      card.innerHTML='<span class="scene-drag" draggable="true" title="Drag to reorder" aria-label="Drag to reorder">⠿</span><button class="scene-delete" type="button" title="Delete segment" aria-label="Delete '+escapeHtml(scene.name)+'">×</button><b>'+escapeHtml(scene.name)+'</b><small>'+Number(scene.duration).toFixed(1)+' sec</small><span class="scene-num">'+String(i+1).padStart(2,'0')+'</span>';
+      card.style.flexBasis=Math.max(112,Number(scene.duration)*34)+'px';
+      card.innerHTML='<span class="scene-resize scene-resize-left" title="Drag to change segment length" aria-label="Resize segment from start"></span><span class="scene-drag" draggable="true" title="Drag to reorder" aria-label="Drag to reorder">⠿</span><button class="scene-delete" type="button" title="Delete segment" aria-label="Delete '+escapeHtml(scene.name)+'">×</button><b>'+escapeHtml(scene.name)+'</b><small>'+Number(scene.duration).toFixed(1)+' sec</small><span class="scene-num">'+String(i+1).padStart(2,'0')+'</span>';
       const select=()=>{state.selected=i;state.elapsed=state.scenes.slice(0,i).reduce((n,x)=>n+Number(x.duration||0),0);renderTimeline();renderInspector();scheduleSave();};
       card.addEventListener('click',e=>{if(e.target.closest('.scene-delete,.scene-drag'))return;select();});
       card.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();select();}});
@@ -227,6 +232,21 @@
         else if(state.selected>removedIndex)state.selected--;
         state.elapsed=state.scenes.slice(0,state.selected).reduce((n,x)=>n+Number(x.duration||0),0);
         renderTimeline();renderInspector();scheduleSave();toast('Segment deleted');
+      });
+      card.querySelectorAll('.scene-resize').forEach(handle=>{
+        handle.addEventListener('pointerdown',e=>{
+          e.preventDefault();e.stopPropagation();handle.setPointerCapture(e.pointerId);
+          const startX=e.clientX,startDuration=Number(scene.duration),direction=handle.classList.contains('scene-resize-left')?-1:1;
+          const onMove=ev=>{
+            const delta=(ev.clientX-startX)/34*direction;
+            scene.duration=Math.max(1,Math.min(60,Math.round((startDuration+delta)*2)/2));
+            card.style.flexBasis=Math.max(112,scene.duration*34)+'px';
+            card.querySelector('small').textContent=scene.duration.toFixed(1)+' sec';
+            updateClock();scheduleSave();
+          };
+          const onUp=()=>{handle.removeEventListener('pointermove',onMove);handle.removeEventListener('pointerup',onUp);handle.removeEventListener('pointercancel',onUp);renderTimeline();if(state.tab==='scenes')renderInspector();};
+          handle.addEventListener('pointermove',onMove);handle.addEventListener('pointerup',onUp);handle.addEventListener('pointercancel',onUp);
+        });
       });
       const handle=card.querySelector('.scene-drag');
       handle.addEventListener('dragstart',e=>{
@@ -295,7 +315,7 @@
   function switchTab(tab){state.tab=tab;document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));renderInspector();}
   document.querySelectorAll('.nav-item,.inspector-tab').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
   function addScene(scene){state.scenes.push(scene||{name:'New scene',duration:5,background:'sky',title:'',subtitle:'',motion:'bounce'});state.selected=state.scenes.length-1;state.elapsed=state.scenes.slice(0,-1).reduce((a,x)=>a+x.duration,0);renderTimeline();renderInspector();toast('Scene added');}
-  $('addScene').onclick=()=>addScene();$('addIntro').onclick=()=>addScene({name:'Animated intro',duration:5,background:'sunset',title:'WELCOME!',subtitle:'The story is about to begin',motion:'bounce'});$('addDialogue').onclick=()=>{state.character.speech='Wait... WHAT?!';state.character.expression='surprised';addScene({name:'Big reaction',duration:5,background:'candy',title:'PLOT TWIST!',subtitle:'Nobody saw that coming',motion:'bounce'});switchTab('characters');};
+  $('addScene').onclick=()=>addScene();$('addIntro').onclick=()=>addScene({name:'Animated intro',duration:2,background:'sunset',title:'WELCOME!',subtitle:'The story is about to begin',motion:'bounce'});$('addDialogue').onclick=()=>{state.character.speech='Wait... WHAT?!';state.character.expression='surprised';addScene({name:'Big reaction',duration:5,background:'candy',title:'PLOT TWIST!',subtitle:'Nobody saw that coming',motion:'bounce'});switchTab('characters');};
   const vipButton=$('vipToggle');
   function updateVipButton(){if(vipButton){vipButton.textContent=state.vip?'✦ VIP ON':'✦ VIP';vipButton.classList.toggle('vip-active',state.vip);}}
   if(vipButton)vipButton.onclick=()=>{state.vip=!state.vip;localStorage.setItem('cartoonlab-vip',String(state.vip));updateVipButton();toast(state.vip?'VIP mode enabled · watermark hidden':'VIP mode disabled · watermark restored');};
