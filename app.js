@@ -117,7 +117,7 @@
     let panel=$('kokoroLoadStatus');
     if(!panel){
       panel=document.createElement('div');panel.id='kokoroLoadStatus';
-      panel.style.cssText='position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:9999;width:min(390px,calc(100vw - 32px));padding:14px 16px;border:1px solid #ffffff24;border-radius:16px;background:#191626;color:#fff;box-shadow:0 12px 40px #0008;font:500 13px DM Sans,sans-serif;display:none';
+      panel.style.cssText='position:fixed;top:82px;left:14px;z-index:9999;width:min(340px,calc(100vw - 28px));padding:13px 15px;border:1px solid #ffffff24;border-radius:14px;background:#191626;color:#fff;box-shadow:0 12px 40px #0008;font:500 13px DM Sans,sans-serif;display:block';
       panel.innerHTML='<div style="display:flex;justify-content:space-between;gap:12px;margin-bottom:9px"><strong id="kokoroLoadTitle">Preparing AI voice…</strong><span id="kokoroLoadPercent">Starting</span></div><div style="height:6px;border-radius:8px;background:#ffffff20;overflow:hidden"><div id="kokoroLoadBar" style="height:100%;width:0%;border-radius:8px;background:linear-gradient(90deg,#bd8cff,#ff9cba);transition:width .2s"></div></div><div id="kokoroLoadDetail" style="margin-top:7px;color:#c9c2d8;font-size:11px">The editor remains usable while this loads.</div>';
       document.body.appendChild(panel);
     }
@@ -135,7 +135,6 @@
     $('kokoroLoadPercent').textContent='100%';
     $('kokoroLoadBar').style.width='100%';
     $('kokoroLoadDetail').textContent='Voice model loaded and ready to reuse.';
-    setTimeout(()=>{if(panel.isConnected)panel.style.display='none';},2600);
   }
   async function loadKokoro(){
     if(state.kokoro)return state.kokoro;
