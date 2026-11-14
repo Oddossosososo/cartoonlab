@@ -113,12 +113,90 @@
     }
     return 0;
   }
-  // AI voice model loading is intentionally disabled. No model is downloaded or initialized.
+  const KOKORO_DOWNLOAD_KEY='cartoonlab-kokoro-download-complete-v1';
+  function kokoroWasDownloaded(){
+    try{return localStorage.getItem(KOKORO_DOWNLOAD_KEY)==='true';}catch(error){return false;}
+  }
+  function updateVoiceLoadUI(info){
+    if(kokoroWasDownloaded())return;
+    let panel=$('kokoroLoadStatus');
+    if(!panel){
+      panel=document.createElement('div');panel.id='kokoroLoadStatus';
+      panel.style.cssText='position:fixed;top:82px;left:14px;z-index:9999;width:min(340px,calc(100vw - 28px));padding:13px 15px;border:1px solid #ffffff24;border-radius:14px;background:#191626;color:#fff;box-shadow:0 12px 40px #0008;font:500 13px DM Sans,sans-serif;display:block';
+      panel.innerHTML='<div style="display:flex;justify-content:space-between;gap:12px;margin-bottom:9px"><strong id="kokoroLoadTitle">Preparing AI voice…</strong><span id="kokoroLoadPercent">Starting</span></div><div style="height:6px;border-radius:8px;background:#ffffff20;overflow:hidden"><div id="kokoroLoadBar" style="height:100%;width:0%;border-radius:8px;background:linear-gradient(90deg,#bd8cff,#ff9cba);transition:width .2s"></div></div><div id="kokoroLoadDetail" style="margin-top:7px;color:#c9c2d8;font-size:11px">The editor remains usable while this loads.</div>';
+      document.body.appendChild(panel);
+    }
+    panel.style.display='block';
+    const title=$('kokoroLoadTitle'),percent=$('kokoroLoadPercent'),bar=$('kokoroLoadBar'),detail=$('kokoroLoadDetail');
+    const p=Number.isFinite(info.progress)?Math.max(0,Math.min(100,info.progress)):-1;
+    title.textContent=info.title||'Preparing AI voice…';
+    percent.textContent=p>=0?Math.round(p)+'%':'Working…';
+    if(p>=0)bar.style.width=p+'%';
+    detail.textContent=info.detail||'The editor remains usable while this loads.';
+  }
+  function finishVoiceLoadUI(){
+    try{localStorage.setItem(KOKORO_DOWNLOAD_KEY,'true');}catch(error){console.warn('Could not save Kokoro download status:',error);}
+    const panel=$('kokoroLoadStatus');if(!panel)return;
+    $('kokoroLoadTitle').textContent='✓ Download complete';
+    $('kokoroLoadTitle').style.color='#8fe3ad';
+    $('kokoroLoadPercent').textContent='100%';
+    $('kokoroLoadBar').style.width='100%';
+    $('kokoroLoadBar').style.background='linear-gradient(90deg,#55c987,#8fe3ad)';
+    $('kokoroLoadDetail').textContent='Kokoro AI voice is loaded and ready to use. This status stays visible.';
+  }
+  async function loadKokoro(){
+    if(state.kokoro)return state.kokoro;
+    if(state.kokoroPromise)return state.kokoroPromise;
+    state.kokoroLoading=true;
+    if(!kokoroWasDownloaded())updateVoiceLoadUI({title:'Preparing AI voice…',detail:'Checking the browser cache and loading model files.'});
+    state.kokoroPromise=(async()=>{
+      try{
+        const {KokoroTTS}=await import('https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/dist/kokoro.web.js');
+        const model=await KokoroTTS.from_pretrained('onnx-community/Kokoro-82M-v1.0-ONNX',{
+          dtype:'q8',device:'wasm',
+          progress_callback:(progress)=>{
+            const status=progress?.status||'';
+            const pct=Number(progress?.progress);
+            const loaded=Number(progress?.loaded),total=Number(progress?.total);
+            const detail=status==='progress'&&loaded>0&&total>0
+              ?(progress.file||'Model file')+' · '+(loaded/1048576).toFixed(1)+' / '+(total/1048576).toFixed(1)+' MB'
+              :status==='done'?'A model file is ready. Loading remaining components…'
+              :status==='ready'?'Finalising the voice engine…'
+              :'Downloading and preparing model files. The editor stays usable.';
+            updateVoiceLoadUI({title:status==='progress_total'?'Downloading AI voice model…':'Preparing AI voice…',progress:Number.isFinite(pct)?pct:-1,detail});
+          }
+        });
+        state.kokoro=model;
+        finishVoiceLoadUI();
+        toast('Kokoro voice engine ready');
+        return model;
+      }catch(error){
+        const panel=$('kokoroLoadStatus');if(panel){$('kokoroLoadTitle').textContent='Voice download failed';$('kokoroLoadPercent').textContent='Retry';$('kokoroLoadDetail').textContent=error.message||'Check your connection and try narration again.';}
+        throw error;
+      }finally{
+        state.kokoroLoading=false;state.kokoroPromise=null;
+      }
+    })();
+    return state.kokoroPromise;
+  }
   function audioContext(){
     const AC=window.AudioContext||window.webkitAudioContext;
     if(!AC)throw new Error('Web Audio is not supported in this browser.');
     if(!state.audioContext)state.audioContext=new AC();
     return state.audioContext;
+  }
+  async function generateVoice(){
+    const text=String(state.character.speech||'').trim();
+    if(!text){toast('Add dialogue first');return null;}
+    if(state.voiceBuffer && state.voiceText===text)return state.voiceBuffer;
+    const model=await loadKokoro();
+    const result=await model.generate(text,{voice:state.voiceName});
+    const ac=audioContext();
+    const samples=result.audio instanceof Float32Array?result.audio:new Float32Array(result.audio);
+    const buffer=ac.createBuffer(1,samples.length,result.sampling_rate||24000);
+    buffer.copyToChannel(samples,0);
+    state.voiceBuffer=buffer;state.voiceText=text;
+    return buffer;
   }
   function playVoiceBuffer(buffer){
     const ac=audioContext();if(ac.state==='suspended')ac.resume();
@@ -138,6 +216,12 @@
     if(state.lipSync.utterance){try{speechSynthesis.cancel();}catch(e){}}
     state.lipSync.active=false;state.analyser=null;state.analyserData=null;
     const button=$('speakDialogue');if(button)button.textContent='▶ Generate + speak';
+  }
+  async function startLipSync(){
+    const button=$('speakDialogue');if(button){button.disabled=true;button.textContent='Loading voice…';}
+    try{stopLipSync();const buffer=await generateVoice();if(buffer)playVoiceBuffer(buffer);}
+    catch(error){console.error('Kokoro TTS:',error);toast('Voice failed: '+(error.message||'check your connection'));if(button)button.textContent='▶ Generate + speak';}
+    finally{if(button)button.disabled=false;}
   }
   function drawCharacter(c, time, scene){
     const movement=scene.characterMotion||({bounce:'bounce',float:'float',still:'idle'}[scene.motion]||'bounce');
@@ -408,7 +492,7 @@
     const tab=state.tab, c=state.character, s=selectedScene();document.querySelectorAll('.inspector-tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
     let html='';
     if(tab==='characters'){
-      html='<div class="inspector-section"><div class="section-title">MAIN CHARACTER</div>'+field('Character name','charName',c.name)+field('Speech bubble text','speechText',c.speech)+'<p class="muted-copy">Add dialogue to show it in the scene.</p></div>'+
+      html='<div class="inspector-section"><div class="section-title">MAIN CHARACTER</div>'+field('Character name','charName',c.name)+field('Speech bubble text','speechText',c.speech)+'<label class="field"><span>Storytelling voice</span><select id="voiceChoice"><option value="af_heart">Heart · warm narrator</option><option value="af_bella">Bella · bright</option><option value="af_nicole">Nicole · gentle</option><option value="am_adam">Adam · deeper</option><option value="am_michael">Michael · friendly</option><option value="bf_emma">Emma · British</option><option value="bm_george">George · British deep</option></select></label><button class="full-button" id="speakDialogue">▶ Generate + speak</button><p class="muted-copy">Kokoro AI voice runs on this device. First use downloads the model (about 80 MB); later uses are cached. Mouth movement follows the audio volume.</p></div>'+
       '<div class="inspector-section"><div class="section-title">LOOK & FEEL</div>'+field('Character colour','charColor',c.color,'color')+
       '<label class="field"><span>Expression</span><div class="choice-row">'+['happy','surprised','curious','sad','angry','neutral'].map(x=>'<button class="choice '+(c.expression===x?'active':'')+'" data-expression="'+x+'">'+x[0].toUpperCase()+x.slice(1)+'</button>').join('')+'</div></label>'+
       '<label class="field"><span>Character size</span><input id="charSize" type="range" min=".65" max="1.35" step=".05" value="'+c.size+'"></label>'+
@@ -448,6 +532,8 @@
     bind('counterInterval',v=>selectedScene().counterInterval=Number(v),'change');bind('counterCorner',v=>selectedScene().counterCorner=v,'change');
     if($('counterEnabled'))$('counterEnabled').onchange=e=>selectedScene().counterEnabled=e.target.checked;
     bind('sceneDuration',v=>{selectedScene().duration=+v;renderTimeline();updateClock();});
+    if($('speakDialogue'))$('speakDialogue').onclick=()=>state.lipSync.active?stopLipSync():startLipSync();
+    if($('voiceChoice')){$('voiceChoice').value=state.voiceName;$('voiceChoice').onchange=e=>{state.voiceName=e.target.value;state.voiceBuffer=null;state.voiceText='';};}
     document.querySelectorAll('[data-expression]').forEach(b=>b.onclick=()=>{state.character.expression=b.dataset.expression;renderInspector();});
     if($('duplicateScene'))$('duplicateScene').onclick=()=>{const copy={...selectedScene(),name:selectedScene().name+' copy'};state.scenes.splice(state.selected+1,0,copy);state.selected++;renderTimeline();renderInspector();toast('Scene duplicated');};
     if($('deleteScene'))$('deleteScene').onclick=()=>{if(state.scenes.length===1){toast('Keep at least one scene');return;}state.scenes.splice(state.selected,1);state.selected=Math.max(0,state.selected-1);state.elapsed=0;renderTimeline();renderInspector();};
@@ -485,10 +571,32 @@
   $('exportVideo').onclick=async()=>{
     if(!canvas.captureStream||!window.MediaRecorder){toast('Video recording is not supported in this browser');return;}
     state.playing=false;state.elapsed=0;$('playButton').textContent='▶';
+    const dialogue=String(state.character.speech||'').trim();
+    if(dialogue){
+      try{await generateVoice();}
+      catch(error){console.error('Kokoro export voice:',error);toast('Could not generate narration: '+(error.message||'check your connection'));return;}
+    }
     let stream=canvas.captureStream(30), audioDestination=null;
+    try{
+      if(state.voiceBuffer){
+        const ac=audioContext();if(ac.state==='suspended')await ac.resume();
+        audioDestination=ac.createMediaStreamDestination();
+        const analyser=ac.createAnalyser();analyser.fftSize=256;
+        const source=ac.createBufferSource();source.buffer=state.voiceBuffer;
+        source.connect(analyser);analyser.connect(audioDestination);
+        state.analyser=analyser;state.analyserData=new Uint8Array(analyser.fftSize);state.lipSync.active=true;
+        source.onended=()=>{state.lipSync.active=false;state.analyser=null;state.analyserData=null;};
+        source.start();
+        audioDestination.stream.getAudioTracks().forEach(track=>stream.addTrack(track));
+      }
+    }catch(error){console.warn('Audio export setup failed:',error);}
     let mime='video/webm;codecs=vp9,opus';if(!MediaRecorder.isTypeSupported(mime))mime='video/webm';
-    const recorder=new MediaRecorder(stream,{mimeType:mime});const chunks=[];recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};recorder.onstop=()=>{const blob=new Blob(chunks,{type:mime});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=(state.title||'cartoonlab-story').replace(/[^a-z0-9-_]+/gi,'-')+'.webm';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);stream.getTracks().forEach(track=>track.stop());state.playing=false;state.elapsed=0;$('playButton').textContent='▶';toast('Video exported successfully.');};recorder.start();state.playing=true;$('playButton').textContent='Ⅱ';toast('Recording animation…');setTimeout(()=>{if(recorder.state!=='inactive')recorder.stop();},totalDuration()*1000);
+    const recorder=new MediaRecorder(stream,{mimeType:mime});const chunks=[];recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};recorder.onstop=()=>{const blob=new Blob(chunks,{type:mime});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=(state.title||'cartoonlab-story').replace(/[^a-z0-9-_]+/gi,'-')+'.webm';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);stream.getTracks().forEach(track=>track.stop());state.playing=false;state.elapsed=0;$('playButton').textContent='▶';toast(state.voiceBuffer?'Video exported with voice audio!':'Video ready (generate dialogue first to include voice audio).');};recorder.start();state.playing=true;$('playButton').textContent='Ⅱ';toast(state.voiceBuffer?'Recording animation + voice…':'Recording animation…');setTimeout(()=>{if(recorder.state!=='inactive')recorder.stop();},totalDuration()*1000);
   };
   renderTimeline();renderInspector();requestAnimationFrame(frame);
-  // AI voice is disabled: no background preload, network import, or model download.
+  // Download and cache the voice model automatically after the editor is ready.
+  // This is a one-time first-visit download; the browser/runtime cache handles later visits.
+  const preloadKokoro=()=>loadKokoro().catch(error=>console.warn('Kokoro background preload failed; it will retry when narration is used:',error));
+  if(typeof window.requestIdleCallback==='function')window.requestIdleCallback(preloadKokoro,{timeout:4000});
+  else setTimeout(preloadKokoro,1800);
 })();
