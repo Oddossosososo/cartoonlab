@@ -261,17 +261,27 @@
     return state.audioContext;
   }
   async function generateVoice(){
-    const text=String(state.character.ttsText||'').trim();
-    if(!text){toast('Add TTS text first');return null;}
-    if(state.voiceBuffer && state.voiceText===text && state.voiceBufferSpeed===state.voiceSpeed)return state.voiceBuffer;
+    if(!String(state.character.ttsText||'').trim()){toast('Add TTS text first');return null;}
+    // Wait for the model first, then read the latest editor values. If the user
+    // changes text, voice, or speed while synthesis is running, regenerate once
+    // with the newest settings instead of playing stale narration.
     const model=await loadKokoro();
-    const result=await model.generate(text,{voice:state.voiceName,speed:state.voiceSpeed});
-    const ac=audioContext();
-    const samples=result.audio instanceof Float32Array?result.audio:new Float32Array(result.audio);
-    const buffer=ac.createBuffer(1,samples.length,result.sampling_rate||24000);
-    buffer.copyToChannel(samples,0);
-    state.voiceBuffer=buffer;state.voiceText=text;state.voiceBufferSpeed=state.voiceSpeed;
-    return buffer;
+    for(let attempt=0;attempt<4;attempt++){
+      const text=String(state.character.ttsText||'').trim();
+      const voice=state.voiceName;
+      const speed=state.voiceSpeed;
+      if(!text){toast('Add TTS text first');return null;}
+      if(state.voiceBuffer && state.voiceText===text && state.voiceName===voice && state.voiceBufferSpeed===speed)return state.voiceBuffer;
+      const result=await model.generate(text,{voice,speed});
+      if(text!==String(state.character.ttsText||'').trim()||voice!==state.voiceName||speed!==state.voiceSpeed)continue;
+      const ac=audioContext();
+      const samples=result.audio instanceof Float32Array?result.audio:new Float32Array(result.audio);
+      const buffer=ac.createBuffer(1,samples.length,result.sampling_rate||24000);
+      buffer.copyToChannel(samples,0);
+      state.voiceBuffer=buffer;state.voiceText=text;state.voiceBufferSpeed=speed;
+      return buffer;
+    }
+    throw new Error('Voice settings kept changing. Press Generate + speak again.');
   }
   function playVoiceBuffer(buffer){
     const ac=audioContext();if(ac.state==='suspended')ac.resume();
@@ -431,6 +441,26 @@
     if(walk){ctx.fillStyle='#ffffff12';ctx.beginPath();ctx.ellipse(640,690,240+Math.sin(time*7)*12,22,0,0,Math.PI*2);ctx.fill();}
   }
 
+  function drawCounter(scene,local){
+    if(!scene.counterEnabled)return;
+    const interval=Math.max(.05,Number(scene.counterInterval)||1);
+    const start=Number.isFinite(Number(scene.counterStart))?Number(scene.counterStart):1;
+    const step=Number.isFinite(Number(scene.counterStep))?Number(scene.counterStep):1;
+    const value=start+Math.floor(Math.max(0,local)/interval)*step;
+    const label=String(scene.counterLabel||'DAY').trim();
+    const unit=String(scene.counterUnit||'').trim();
+    const counterText=(label?label+' ':'')+value+(unit?' '+unit:'');
+    ctx.save();
+    ctx.font='800 27px Space Grotesk';ctx.textAlign='center';ctx.textBaseline='middle';
+    const width=Math.max(116,ctx.measureText(counterText).width+42),height=58,pad=22;
+    const corner=scene.counterCorner||'top-right';
+    const left=corner.includes('left')?pad:1280-width-pad;
+    const top=corner.includes('bottom')?720-height-pad:pad;
+    ctx.fillStyle='#171326dd';roundRect(ctx,left,top,width,height,15);ctx.fill();
+    ctx.strokeStyle='#ffffff38';ctx.lineWidth=1.5;roundRect(ctx,left,top,width,height,15);ctx.stroke();
+    ctx.fillStyle='#fff';ctx.fillText(counterText,left+width/2,top+height/2);
+    ctx.restore();
+  }
   function draw(){
     const scene=selectedScene(), bg=backgrounds[scene.background]||backgrounds.sunset;
     // House walkthrough scenes keep their dedicated room artwork as the primary background.
@@ -439,7 +469,7 @@
     if(has3D&&window.CartoonLab3D.canvas)ctx.drawImage(window.CartoonLab3D.canvas,0,0,1280,720);
     if(scene.houseRoom){if(!has3D)drawHouseRoom(scene,state.elapsed);drawCharacter(state.character,state.elapsed,scene);if(scene.title){ctx.save();ctx.textAlign='center';ctx.fillStyle='#fff';ctx.shadowColor='#0008';ctx.shadowBlur=12;ctx.font='800 42px Space Grotesk';ctx.fillText(scene.title,640,72);ctx.restore();}if(scene.subtitle){ctx.save();ctx.textAlign='center';ctx.fillStyle='#fff';ctx.font='500 20px DM Sans';ctx.fillText(scene.subtitle,640,108);ctx.restore();}}
     else if(!has3D){const grad=ctx.createLinearGradient(0,0,0,720);grad.addColorStop(0,bg[0]);grad.addColorStop(.65,bg[1]);grad.addColorStop(1,bg[2]);ctx.fillStyle=grad;ctx.fillRect(0,0,1280,720);}
-    if(scene.houseRoom){if(scene.counterEnabled){const local=currentTime().local;const value=(Number(scene.counterStart)||0)+Math.floor(local/Math.max(.25,Number(scene.counterInterval)||1))*(Number(scene.counterStep)||0);ctx.save();ctx.font='800 25px Space Grotesk';ctx.fillStyle='#171326dd';roundRect(ctx,1080,22,175,52,14);ctx.fill();ctx.fillStyle='#fff';ctx.textAlign='center';ctx.fillText((scene.counterLabel||'DAY')+' '+value,1167,56);ctx.restore();}return;}
+    if(scene.houseRoom){drawCounter(scene,currentTime().local);return;}
     const t=state.elapsed, camera=scene.cameraMotion||'none';
     let zoom=1,panX=0,panY=0,shakeX=0,shakeY=0;
     if(camera==='zoom-in')zoom=1+((Math.sin(t*1.1)+1)/2)*.12;
@@ -468,23 +498,7 @@
     if(scene.subtitle){ctx.textAlign='center';ctx.fillStyle='#fff';ctx.globalAlpha=.85;ctx.font='500 22px DM Sans';ctx.fillText(scene.subtitle,640,137);ctx.globalAlpha=1;}
     drawCharacter(state.character,state.elapsed,scene);
     ctx.restore();
-    if(scene.counterEnabled){
-      const local=currentTime().local;
-      const interval=Math.max(.25,Number(scene.counterInterval)||1);
-      const value=(Number(scene.counterStart)||0)+Math.floor(local/interval)*(Number(scene.counterStep)||0);
-      const label=String(scene.counterLabel||'DAY').trim();
-      const unit=String(scene.counterUnit||'').trim();
-      const counterText=(label?label+' ':'')+value+(unit?' '+unit:'');
-      ctx.save();ctx.font='800 27px Space Grotesk';ctx.textAlign='center';
-      const width=Math.max(116,ctx.measureText(counterText).width+42),height=58,pad=22;
-      const corner=scene.counterCorner||'top-right';
-      const left=corner.includes('left')?pad:1280-width-pad;
-      const top=corner.includes('bottom')?720-height-pad:pad;
-      ctx.fillStyle='#171326dd';roundRect(ctx,left,top,width,height,15);ctx.fill();
-      ctx.strokeStyle='#ffffff38';ctx.lineWidth=1.5;roundRect(ctx,left,top,width,height,15);ctx.stroke();
-      ctx.fillStyle='#fff';ctx.fillText(counterText,left+width/2,top+37);
-      ctx.restore();
-    }
+    drawCounter(scene,currentTime().local);
     if(!state.vip){ctx.textAlign='left';ctx.fillStyle='#ffffff88';ctx.font='600 13px DM Sans';ctx.fillText('CARTOONLAB',35,680);}
   }
   function updateClock(){
