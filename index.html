@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#11101b" />
+  <meta name="description" content="CartoonLab — make your own animated stories." />
+  <title>CartoonLab — Animation Studio</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#"><span class="brand-mark">C</span><span>Cartoon<span class="brand-accent">Lab</span></span></a>
+    <div class="project-name"><span class="live-dot"></span><span id="projectTitle">Untitled story</span><span class="saved-label">Saved locally</span></div>
+    <div class="top-actions">
+      <button class="button ghost" id="newProject">＋ New</button>
+      <button class="button primary" id="exportVideo">Export video ↗</button>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <aside class="left-panel">
+      <div class="panel-heading"><span>YOUR STORY</span><button class="icon-button" id="renameProject" title="Rename story">✎</button></div>
+      <button class="nav-item active" data-tab="characters">◉ <span>Characters</span></button>
+      <button class="nav-item" data-tab="scenes">▧ <span>Scenes</span></button>
+      <button class="nav-item" data-tab="audio">♫ <span>Audio & voice</span></button>
+      <div class="panel-divider"></div>
+      <div class="panel-heading"><span>QUICK START</span></div>
+      <button class="template-card" id="addIntro"><span class="template-icon">✦</span><span><b>Animated intro</b><small>Start with a title scene</small></span><span class="plus">＋</span></button>
+      <button class="template-card" id="addDialogue"><span class="template-icon peach">☻</span><span><b>Dialogue scene</b><small>Two characters talking</small></span><span class="plus">＋</span></button>
+      <div class="left-tip"><span>💡</span><p><b>Story tip</b><br/>Keep scenes short and give every moment a clear visual joke or reaction.</p></div>
+    </aside>
+
+    <section class="editor">
+      <div class="stage-toolbar">
+        <div class="stage-label"><span class="record-dot"></span> SCENE PREVIEW <span class="scene-counter" id="sceneCounter">01 / 01</span></div>
+        <div class="stage-tools"><button class="icon-button" id="fitStage" title="Fit preview">⛶</button><button class="icon-button" id="fullscreen" title="Fullscreen">□</button></div>
+      </div>
+      <div class="stage-wrap" id="stageWrap">
+        <canvas id="stage" width="1280" height="720" aria-label="Animation preview"></canvas>
+        <div class="stage-overlay" id="stageOverlay">Your story starts here ✨</div>
+      </div>
+      <div class="playback">
+        <button class="play-button" id="playButton" title="Play">▶</button>
+        <span class="timecode" id="timecode">00:00.0</span>
+        <div class="scrub-track" id="scrubTrack"><div class="scrub-fill" id="scrubFill"></div><div class="scrub-knob" id="scrubKnob"></div></div>
+        <span class="timecode" id="durationLabel">00:06.0</span>
+        <button class="icon-button" id="restartButton" title="Restart">↺</button>
+      </div>
+      <div class="timeline">
+        <div class="timeline-header"><b>Timeline</b><span id="timelineDuration">6.0 seconds</span><button class="button small" id="addScene">＋ Add scene</button></div>
+        <div class="scene-track" id="sceneTrack"></div>
+        <div class="track-labels"><span>VIDEO</span><span class="track-line"></span><span>AUDIO</span><span class="track-line"></span></div>
+      </div>
+    </section>
+
+    <aside class="right-panel">
+      <div class="inspector-tabs"><button class="inspector-tab active" data-tab="characters">Character</button><button class="inspector-tab" data-tab="scenes">Scene</button><button class="inspector-tab" data-tab="audio">Audio</button></div>
+      <div id="inspectorContent"></div>
+    </aside>
+  </main>
+
+  <div class="toast" id="toast" role="status"></div>
+  <input type="file" id="audioUpload" accept="audio/*" hidden />
+  <script src="app.js"></script>
+</body>
+</html>
