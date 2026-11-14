@@ -4,7 +4,7 @@
   const $ = (id) => document.getElementById(id);
   const state = {
     title: 'Untitled story', tab: 'characters', selected: 0, playing: false, vip: localStorage.getItem('cartoonlab-vip') === 'true',
-    elapsed: 0, lastFrame: 0, audioUrl: null, audioName: '', kokoro: null, kokoroLoading: false, voiceBuffer: null, voiceText: '', voiceName: 'af_heart', audioContext: null, voiceSource: null, analyser: null, analyserData: null, lipSync: { active:false, startedAt:0, utterance:null },
+    elapsed: 0, lastFrame: 0, audioUrl: null, audioName: '', kokoro: null, kokoroLoading: false, kokoroPromise: null, voiceBuffer: null, voiceText: '', voiceName: 'af_heart', audioContext: null, voiceSource: null, analyser: null, analyserData: null, lipSync: { active:false, startedAt:0, utterance:null },
     character: { name: 'Bloop', color: '#ff9cba', expression: 'happy', x: 640, size: 1, speech: 'What if...?' },
     scenes: [{ name: 'Opening scene', duration: 3, background: 'sunset', title: 'WHAT IF...?', subtitle: 'A tiny idea. A BIG adventure.', motion: 'bounce' }]
   };
@@ -113,15 +113,64 @@
     }
     return 0;
   }
+  function updateVoiceLoadUI(info){
+    let panel=$('kokoroLoadStatus');
+    if(!panel){
+      panel=document.createElement('div');panel.id='kokoroLoadStatus';
+      panel.style.cssText='position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:9999;width:min(390px,calc(100vw - 32px));padding:14px 16px;border:1px solid #ffffff24;border-radius:16px;background:#191626;color:#fff;box-shadow:0 12px 40px #0008;font:500 13px DM Sans,sans-serif;display:none';
+      panel.innerHTML='<div style="display:flex;justify-content:space-between;gap:12px;margin-bottom:9px"><strong id="kokoroLoadTitle">Preparing AI voice…</strong><span id="kokoroLoadPercent">Starting</span></div><div style="height:6px;border-radius:8px;background:#ffffff20;overflow:hidden"><div id="kokoroLoadBar" style="height:100%;width:0%;border-radius:8px;background:linear-gradient(90deg,#bd8cff,#ff9cba);transition:width .2s"></div></div><div id="kokoroLoadDetail" style="margin-top:7px;color:#c9c2d8;font-size:11px">The editor remains usable while this loads.</div>';
+      document.body.appendChild(panel);
+    }
+    panel.style.display='block';
+    const title=$('kokoroLoadTitle'),percent=$('kokoroLoadPercent'),bar=$('kokoroLoadBar'),detail=$('kokoroLoadDetail');
+    const p=Number.isFinite(info.progress)?Math.max(0,Math.min(100,info.progress)):-1;
+    title.textContent=info.title||'Preparing AI voice…';
+    percent.textContent=p>=0?Math.round(p)+'%':'Working…';
+    if(p>=0)bar.style.width=p+'%';
+    detail.textContent=info.detail||'The editor remains usable while this loads.';
+  }
+  function finishVoiceLoadUI(){
+    const panel=$('kokoroLoadStatus');if(!panel)return;
+    $('kokoroLoadTitle').textContent='AI voice ready';
+    $('kokoroLoadPercent').textContent='100%';
+    $('kokoroLoadBar').style.width='100%';
+    $('kokoroLoadDetail').textContent='Voice model loaded and ready to reuse.';
+    setTimeout(()=>{if(panel.isConnected)panel.style.display='none';},2600);
+  }
   async function loadKokoro(){
     if(state.kokoro)return state.kokoro;
-    if(state.kokoroLoading)throw new Error('Voice model is already loading. Please wait.');
-    state.kokoroLoading=true;toast('Loading Kokoro voice engine… (first download is about 80 MB)');
-    try{
-      const {KokoroTTS}=await import('https://esm.sh/kokoro-js@1.2.1');
-      const model=await KokoroTTS.from_pretrained('onnx-community/Kokoro-82M-v1.0-ONNX',{dtype:'q8',device:'wasm'});
-      state.kokoro=model;toast('Kokoro voice engine ready');return model;
-    } finally {state.kokoroLoading=false;}
+    if(state.kokoroPromise)return state.kokoroPromise;
+    state.kokoroLoading=true;
+    updateVoiceLoadUI({title:'Preparing AI voice…',detail:'Checking the browser cache and loading model files.'});
+    state.kokoroPromise=(async()=>{
+      try{
+        const {KokoroTTS}=await import('https://esm.sh/kokoro-js@1.2.1');
+        const model=await KokoroTTS.from_pretrained('onnx-community/Kokoro-82M-v1.0-ONNX',{
+          dtype:'q8',device:'wasm',
+          progress_callback:(progress)=>{
+            const status=progress?.status||'';
+            const pct=Number(progress?.progress);
+            const loaded=Number(progress?.loaded),total=Number(progress?.total);
+            const detail=status==='progress'&&loaded>0&&total>0
+              ?(progress.file||'Model file')+' · '+(loaded/1048576).toFixed(1)+' / '+(total/1048576).toFixed(1)+' MB'
+              :status==='done'?'A model file is ready. Loading remaining components…'
+              :status==='ready'?'Finalising the voice engine…'
+              :'Downloading and preparing model files. The editor stays usable.';
+            updateVoiceLoadUI({title:status==='progress_total'?'Downloading AI voice model…':'Preparing AI voice…',progress:Number.isFinite(pct)?pct:-1,detail});
+          }
+        });
+        state.kokoro=model;
+        finishVoiceLoadUI();
+        toast('Kokoro voice engine ready');
+        return model;
+      }catch(error){
+        const panel=$('kokoroLoadStatus');if(panel){$('kokoroLoadTitle').textContent='Voice download failed';$('kokoroLoadPercent').textContent='Retry';$('kokoroLoadDetail').textContent=error.message||'Check your connection and try narration again.';}
+        throw error;
+      }finally{
+        state.kokoroLoading=false;state.kokoroPromise=null;
+      }
+    })();
+    return state.kokoroPromise;
   }
   function audioContext(){
     const AC=window.AudioContext||window.webkitAudioContext;
