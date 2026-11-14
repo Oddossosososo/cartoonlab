@@ -135,6 +135,7 @@
     $('kokoroLoadPercent').textContent='100%';
     $('kokoroLoadBar').style.width='100%';
     $('kokoroLoadDetail').textContent='Voice model loaded and ready to reuse.';
+    setTimeout(()=>panel.remove(),2000);
   }
   async function loadKokoro(){
     if(state.kokoro)return state.kokoro;
