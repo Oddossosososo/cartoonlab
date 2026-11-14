@@ -537,6 +537,8 @@
   function paintSceneBackground(scene,alpha=1){
     if(!scene)return;
     ctx.save();ctx.globalAlpha=Math.max(0,Math.min(1,alpha));
+    if(!scene.backgroundImage&&scene.backgroundType!=='solid'&&scene.backgroundType!=='gradient'&&scene.houseRoom){drawHouseRoom(scene,state.elapsed);ctx.restore();return;}
+    if(!scene.backgroundImage&&scene.backgroundType!=='solid'&&scene.backgroundType!=='gradient'&&scene.background==='withering-forest'){drawWitheringForest(scene,state.elapsed);ctx.restore();return;}
     if(scene.backgroundImage){
       let image=backgroundImageCache.get(scene.backgroundImage);
       if(!image){image=new Image();backgroundImageCache.set(scene.backgroundImage,image);image.onload=()=>draw();image.src=scene.backgroundImage;}
@@ -859,7 +861,7 @@ if($('addMesh'))$('addMesh').onclick=()=>{if(state.meshObjects.length>=100){toas
     bind('sceneName',v=>selectedScene().name=v);
     if($('sceneBg'))$('sceneBg').onchange=e=>{const scene=selectedScene();scene.background=e.target.value;scene.backgroundType='preset';scene.backgroundImage='';if(e.target.value==='withering-forest'){scene.title='YES, ALL LIFE.';scene.subtitle='Trees are life.';}draw();scheduleSave();};
     if($('backgroundType'))$('backgroundType').onchange=e=>{const scene=selectedScene();scene.backgroundType=e.target.value;if(e.target.value!=='image')scene.backgroundImage='';draw();scheduleSave();renderInspector();};
-    ['backgroundColor','backgroundColor2'].forEach((id,i)=>{const el=$(id);if(el)el.oninput=()=>{const scene=selectedScene();scene.backgroundType='gradient';scene[i?'backgroundColor2':'backgroundColor']=el.value;draw();scheduleSave();};});
+    ['backgroundColor','backgroundColor2'].forEach((id,i)=>{const el=$(id);if(el)el.oninput=()=>{const scene=selectedScene();if(scene.backgroundType!=='solid')scene.backgroundType='gradient';scene[i?'backgroundColor2':'backgroundColor']=el.value;draw();scheduleSave();};});
     if($('backgroundFile'))$('backgroundFile').onchange=async e=>{
       const file=e.target.files?.[0];if(!file)return;
       if(!file.type.startsWith('image/')){toast('Choose an image file');return;}
