@@ -46,6 +46,7 @@
     else if(c.expression==='surprised'){ctx.beginPath();ctx.ellipse(0,r*.16,r*.09,r*.15,0,0,Math.PI*2);ctx.fill();}
     else if(c.expression==='sad'){ctx.arc(0,r*.34,r*.2,Math.PI+0.2,Math.PI*2-.2);ctx.stroke();}
     else if(c.expression==='angry'){ctx.moveTo(-r*.16,r*.19);ctx.lineTo(r*.16,r*.19);ctx.stroke();ctx.beginPath();ctx.moveTo(-r*.45,-r*.42);ctx.lineTo(-r*.2,-r*.34);ctx.moveTo(r*.45,-r*.42);ctx.lineTo(r*.2,-r*.34);ctx.stroke();}
+    else if(c.expression==='curious'){ctx.beginPath();ctx.moveTo(-r*.16,r*.17);ctx.quadraticCurveTo(-r*.02,r*.28,r*.17,r*.12);ctx.stroke();ctx.beginPath();ctx.moveTo(-r*.43,-r*.43);ctx.quadraticCurveTo(-r*.3,-r*.58,-r*.17,-r*.43);ctx.moveTo(r*.18,-r*.48);ctx.quadraticCurveTo(r*.32,-r*.39,r*.45,-r*.46);ctx.stroke();}
     else {ctx.moveTo(-r*.15,r*.17);ctx.lineTo(r*.15,r*.17);ctx.stroke();}
     // arms
     ctx.strokeStyle=c.color;ctx.lineWidth=25*c.size;ctx.beginPath();ctx.moveTo(-r*.7,5);ctx.quadraticCurveTo(-r*1.15,25+bob*.3,-r*1.12,55);ctx.moveTo(r*.7,5);ctx.quadraticCurveTo(r*1.1,-25-bob*.3,r*1.08,-60);ctx.stroke();
@@ -91,7 +92,7 @@
     if(tab==='characters'){
       html='<div class="inspector-section"><div class="section-title">MAIN CHARACTER</div>'+field('Character name','charName',c.name)+field('Speech bubble text','speechText',c.speech)+'</div>'+
       '<div class="inspector-section"><div class="section-title">LOOK & FEEL</div>'+field('Character colour','charColor',c.color,'color')+
-      '<label class="field"><span>Expression</span><div class="choice-row">'+['happy','surprised','sad','angry','neutral'].map(x=>'<button class="choice '+(c.expression===x?'active':'')+'" data-expression="'+x+'">'+x[0].toUpperCase()+x.slice(1)+'</button>').join('')+'</div></label>'+
+      '<label class="field"><span>Expression</span><div class="choice-row">'+['happy','surprised','curious','sad','angry','neutral'].map(x=>'<button class="choice '+(c.expression===x?'active':'')+'" data-expression="'+x+'">'+x[0].toUpperCase()+x.slice(1)+'</button>').join('')+'</div></label>'+
       '<label class="field"><span>Character size</span><input id="charSize" type="range" min=".65" max="1.35" step=".05" value="'+c.size+'"></label>'+
       '<label class="field"><span>Stage position</span><input id="charX" type="range" min="180" max="1100" step="10" value="'+c.x+'"></label></div>'+
       '<button class="full-button" id="addCharacter">＋ Add another character (coming soon)</button><p class="muted-copy">Tip: change the expression between scenes to make reactions feel alive.</p>';
