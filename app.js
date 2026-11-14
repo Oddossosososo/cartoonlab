@@ -3,7 +3,7 @@
   const ctx = canvas.getContext('2d');
   const $ = (id) => document.getElementById(id);
   const state = {
-    title: 'Untitled story', tab: 'characters', selected: 0, playing: false,
+    title: 'Untitled story', tab: 'characters', selected: 0, playing: false, vip: localStorage.getItem('cartoonlab-vip') === 'true',
     elapsed: 0, lastFrame: 0, audioUrl: null, audioName: '',
     character: { name: 'Bloop', color: '#ff9cba', expression: 'happy', x: 640, size: 1, speech: 'What if...?' },
     scenes: [{ name: 'Opening scene', duration: 6, background: 'sunset', title: 'WHAT IF...?', subtitle: 'A tiny idea. A BIG adventure.', motion: 'bounce' }]
@@ -80,7 +80,7 @@
     if(scene.title){ctx.textAlign='center';ctx.fillStyle='#fff';ctx.shadowColor='#241a3a88';ctx.shadowBlur=20;ctx.font='800 62px Space Grotesk';ctx.fillText(scene.title,640,100);ctx.shadowBlur=0;}
     if(scene.subtitle){ctx.textAlign='center';ctx.fillStyle='#fff';ctx.globalAlpha=.85;ctx.font='500 22px DM Sans';ctx.fillText(scene.subtitle,640,137);ctx.globalAlpha=1;}
     drawCharacter(state.character,state.elapsed,scene);
-    ctx.textAlign='left';ctx.fillStyle='#ffffff88';ctx.font='600 13px DM Sans';ctx.fillText('CARTOONLAB',35,680);
+    if(!state.vip){ctx.textAlign='left';ctx.fillStyle='#ffffff88';ctx.font='600 13px DM Sans';ctx.fillText('CARTOONLAB',35,680);}
   }
   function updateClock(){
     const t=state.elapsed, m=Math.floor(t/60),s=(t%60).toFixed(1).padStart(4,'0');
@@ -144,7 +144,7 @@
   document.querySelectorAll('.nav-item,.inspector-tab').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
   function addScene(scene){state.scenes.push(scene||{name:'New scene',duration:5,background:'sky',title:'',subtitle:'',motion:'bounce'});state.selected=state.scenes.length-1;state.elapsed=state.scenes.slice(0,-1).reduce((a,x)=>a+x.duration,0);renderTimeline();renderInspector();toast('Scene added');}
   $('addScene').onclick=()=>addScene();$('addIntro').onclick=()=>addScene({name:'Animated intro',duration:5,background:'sunset',title:'WELCOME!',subtitle:'The story is about to begin',motion:'bounce'});$('addDialogue').onclick=()=>{state.character.speech='Wait... WHAT?!';state.character.expression='surprised';addScene({name:'Big reaction',duration:5,background:'candy',title:'PLOT TWIST!',subtitle:'Nobody saw that coming',motion:'bounce'});switchTab('characters');};
-  $('playButton').onclick=()=>{state.playing=!state.playing;$('playButton').textContent=state.playing?'Ⅱ':'▶';if(state.elapsed>=totalDuration())state.elapsed=0;};
+  const vipButton=$('vipToggle');\n  function updateVipButton(){if(vipButton){vipButton.textContent=state.vip?'✦ VIP ON':'✦ VIP';vipButton.classList.toggle('vip-active',state.vip);}}\n  if(vipButton)vipButton.onclick=()=>{state.vip=!state.vip;localStorage.setItem('cartoonlab-vip',String(state.vip));updateVipButton();toast(state.vip?'VIP mode enabled · watermark hidden':'VIP mode disabled · watermark restored');};\n  updateVipButton();\n  $('playButton').onclick=()=>{state.playing=!state.playing;$('playButton').textContent=state.playing?'Ⅱ':'▶';if(state.elapsed>=totalDuration())state.elapsed=0;};
   $('restartButton').onclick=()=>{state.elapsed=0;state.playing=false;$('playButton').textContent='▶';};
   $('scrubTrack').onclick=e=>{const r=e.currentTarget.getBoundingClientRect();state.elapsed=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))*totalDuration();};
   $('renameProject').onclick=()=>{const n=prompt('Name your story',state.title);if(n&&n.trim()){state.title=n.trim();$('projectTitle').textContent=state.title;}};
