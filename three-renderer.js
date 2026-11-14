@@ -66,10 +66,11 @@ const clock=new THREE.Clock();
 
 function makeRenderer(){
   const params={antialias:false,alpha:false,powerPreference:'low-power'};
-  // WebGPU is opt-in until its post-processing stack is available in the browser.
-  // Use ?renderer=webgpu to test it; WebGL remains the full cinematic-effects path.
-  const wantsGPU=new URLSearchParams(location.search).get('renderer')==='webgpu';
-  if(wantsGPU&&navigator.gpu){
+  // Prefer WebGPU automatically when available. Add ?renderer=webgl to force the compatibility fallback.
+  const paramsFromUrl=new URLSearchParams(location.search);
+  const wantsWebGL=paramsFromUrl.get('renderer')==='webgl';
+  const wantsGPU=!wantsWebGL&&!!navigator.gpu;
+  if(wantsGPU){
     return import('three/webgpu').then(async({WebGPURenderer})=>{
       const r=new WebGPURenderer(params);await r.init();webgpu=true;return r;
     }).catch(error=>{console.warn('WebGPU unavailable; using WebGL:',error);return new THREE.WebGLRenderer(params);});
