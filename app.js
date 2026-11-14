@@ -818,7 +818,7 @@
     });
     const first=state.scenes.find(scene=>scene.counterMode==='years');
     if(first)lines.push('#'+(Number(first.counterStart)||0)+'-'+(Number(first.counterEnd)||250)+'y');
-    return lines.join('\\n')+'\\n';
+    return lines.join('\n')+'\n';
   }
   function downloadText(name,content,type){
     const url=URL.createObjectURL(new Blob([content],{type}));
@@ -827,10 +827,10 @@
   }
   function importHypershort(source){
     const scenes=[];let current=null,years=null;
-    for(const raw of String(source).split(/\\r?\\n/)){
+    for(const raw of String(source).split(/\r?\n/)){
       const line=raw.trim();if(!line||line.startsWith('//'))continue;
       if(line[0]==='@'){
-        const m=line.match(/^@([\\d.]+)\\s+([a-z-]+)$/i);
+        const m=line.match(/^@([\d.]+)\s+([a-z-]+)$/i);
         if(!m)throw new Error('Bad scene command: '+line);
         current={name:'HSL scene '+(scenes.length+1),duration:Math.max(.1,Number(m[1])),background:m[2],title:'',subtitle:'',motion:'bounce'};
         scenes.push(current);
@@ -840,7 +840,7 @@
         try{value=JSON.parse(value);}catch(error){if(value.startsWith('"'))throw new Error('Bad quoted text: '+line);}
         if(line[0]==='>')current.title=String(value);else current.subtitle=String(value);
       }else if(line[0]==='#'){
-        const m=line.match(/^#(-?\\d+(?:\\.\\d+)?)-(-?\\d+(?:\\.\\d+)?)y$/i);
+        const m=line.match(/^#(-?\d+(?:\.\d+)?)-(-?\d+(?:\.\d+)?)y$/i);
         if(!m)throw new Error('Bad years command: '+line);
         years={start:Number(m[1]),end:Number(m[2])};
       }else throw new Error('Unknown command: '+line);
