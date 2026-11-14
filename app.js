@@ -180,8 +180,51 @@
     draw();updateClock();requestAnimationFrame(frame);
   }
   function renderTimeline(){
-    $('sceneTrack').innerHTML='';
-    state.scenes.forEach((s,i)=>{const b=document.createElement('button');b.className='scene-card'+(i===state.selected?' active':'');b.innerHTML='<b>'+escapeHtml(s.name)+'</b><small>'+s.duration.toFixed(1)+' sec</small><span class="scene-num">'+String(i+1).padStart(2,'0')+'</span>';b.onclick=()=>{state.selected=i;state.elapsed=state.scenes.slice(0,i).reduce((a,x)=>a+x.duration,0);renderTimeline();renderInspector();};$('sceneTrack').append(b);});
+    const track=$('sceneTrack');
+    track.innerHTML='';
+    state.scenes.forEach((scene,i)=>{
+      const card=document.createElement('div');
+      card.className='scene-card'+(i===state.selected?' active':'');
+      card.tabIndex=0;
+      card.setAttribute('role','button');
+      card.setAttribute('aria-label','Select '+scene.name);
+      card.innerHTML='<span class="scene-drag" draggable="true" title="Drag to reorder" aria-label="Drag to reorder">⠿</span><button class="scene-delete" type="button" title="Delete segment" aria-label="Delete '+escapeHtml(scene.name)+'">×</button><b>'+escapeHtml(scene.name)+'</b><small>'+Number(scene.duration).toFixed(1)+' sec</small><span class="scene-num">'+String(i+1).padStart(2,'0')+'</span>';
+      const select=()=>{state.selected=i;state.elapsed=state.scenes.slice(0,i).reduce((n,x)=>n+Number(x.duration||0),0);renderTimeline();renderInspector();scheduleSave();};
+      card.addEventListener('click',e=>{if(e.target.closest('.scene-delete,.scene-drag'))return;select();});
+      card.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();select();}});
+      card.querySelector('.scene-delete').addEventListener('click',e=>{
+        e.stopPropagation();
+        if(state.scenes.length===1){toast('Keep at least one segment');return;}
+        const removedIndex=i;
+        state.scenes.splice(removedIndex,1);
+        if(state.selected===removedIndex)state.selected=Math.max(0,removedIndex-1);
+        else if(state.selected>removedIndex)state.selected--;
+        state.elapsed=state.scenes.slice(0,state.selected).reduce((n,x)=>n+Number(x.duration||0),0);
+        renderTimeline();renderInspector();scheduleSave();toast('Segment deleted');
+      });
+      const handle=card.querySelector('.scene-drag');
+      handle.addEventListener('dragstart',e=>{
+        card.classList.add('dragging');
+        e.dataTransfer.effectAllowed='move';
+        e.dataTransfer.setData('text/plain',String(i));
+      });
+      handle.addEventListener('dragend',()=>card.classList.remove('dragging'));
+      card.addEventListener('dragover',e=>{e.preventDefault();e.dataTransfer.dropEffect='move';card.classList.add('drag-over');});
+      card.addEventListener('dragleave',()=>card.classList.remove('drag-over'));
+      card.addEventListener('drop',e=>{
+        e.preventDefault();card.classList.remove('drag-over');
+        const from=Number(e.dataTransfer.getData('text/plain')),to=i;
+        if(!Number.isInteger(from)||from<0||from>=state.scenes.length||from===to)return;
+        const [moved]=state.scenes.splice(from,1);
+        state.scenes.splice(to,0,moved);
+        if(state.selected===from)state.selected=to;
+        else if(from<state.selected&&to>=state.selected)state.selected--;
+        else if(from>state.selected&&to<=state.selected)state.selected++;
+        state.elapsed=state.scenes.slice(0,state.selected).reduce((n,x)=>n+Number(x.duration||0),0);
+        renderTimeline();renderInspector();scheduleSave();toast('Segments reordered');
+      });
+      track.append(card);
+    });
   }
   function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
   function field(label,id,value,type='text',extra=''){return '<label class="field"><span>'+label+'</span><input id="'+id+'" type="'+type+'" value="'+escapeHtml(value)+'" '+extra+'></label>';}
