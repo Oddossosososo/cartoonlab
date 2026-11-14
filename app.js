@@ -132,7 +132,7 @@
   async function generateVoice(){
     const text=String(state.character.speech||'').trim();
     if(!text){toast('Add dialogue first');return null;}
-    if(state.voiceBuffer && state.voiceText===text && state.voiceName===state.voiceName)return state.voiceBuffer;
+    if(state.voiceBuffer && state.voiceText===text)return state.voiceBuffer;
     const model=await loadKokoro();
     const result=await model.generate(text,{voice:state.voiceName});
     const ac=audioContext();
@@ -338,7 +338,7 @@
   }
   function bindInspector(){
     const bind=(id,fn,event='input')=>{const el=$(id);if(el)el.addEventListener(event,()=>fn(el.value));};
-    bind('charName',v=>state.character.name=v);bind('speechText',v=>state.character.speech=v);bind('charColor',v=>state.character.color=v);bind('charSize',v=>state.character.size=+v);bind('charX',v=>state.character.x=+v);
+    bind('charName',v=>state.character.name=v);bind('speechText',v=>{state.character.speech=v;state.voiceBuffer=null;state.voiceText='';});bind('charColor',v=>state.character.color=v);bind('charSize',v=>state.character.size=+v);bind('charX',v=>state.character.x=+v);
     bind('sceneName',v=>selectedScene().name=v);bind('sceneBg',v=>selectedScene().background=v,'change');bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedScene().subtitle=v);bind('sceneMotion',v=>selectedScene().motion=v,'change');
     bind('sceneDuration',v=>{selectedScene().duration=+v;renderTimeline();updateClock();});
     if($('speakDialogue'))$('speakDialogue').onclick=()=>state.lipSync.active?stopLipSync():startLipSync();
@@ -367,15 +367,25 @@
   $('fitStage').onclick=()=>toast('Preview is fitted to the editor');
   $('audioUpload').onchange=e=>{const f=e.target.files[0];if(!f)return;if(state.audioUrl)URL.revokeObjectURL(state.audioUrl);state.audioUrl=URL.createObjectURL(f);state.audioName=f.name;const a=new Audio(state.audioUrl);a.play().catch(()=>{});renderInspector();toast('Audio loaded for preview');};
   function playSound(kind){const AC=window.AudioContext||window.webkitAudioContext;if(!AC){toast('Sound effects are unavailable');return;}const ac=new AC(),o=ac.createOscillator(),g=ac.createGain();o.connect(g);g.connect(ac.destination);const now=ac.currentTime;o.type=kind==='boing'?'triangle':'sine';o.frequency.setValueAtTime(kind==='boing'?180:kind==='sparkle'?900:520,now);o.frequency.exponentialRampToValueAtTime(kind==='boing'?520:kind==='sparkle'?1500:180,now+.22);g.gain.setValueAtTime(.12,now);g.gain.exponentialRampToValueAtTime(.001,now+.25);o.start();o.stop(now+.26);}
-  $('exportVideo').onclick=()=>{
+  $('exportVideo').onclick=async()=>{
     if(!canvas.captureStream||!window.MediaRecorder){toast('Video recording is not supported in this browser');return;}
     state.playing=false;state.elapsed=0;$('playButton').textContent='▶';
+    const dialogue=String(state.character.speech||'').trim();
+    if(dialogue){
+      try{await generateVoice();}
+      catch(error){console.error('Kokoro export voice:',error);toast('Could not generate narration: '+(error.message||'check your connection'));return;}
+    }
     let stream=canvas.captureStream(30), audioDestination=null;
     try{
       if(state.voiceBuffer){
         const ac=audioContext();if(ac.state==='suspended')await ac.resume();
         audioDestination=ac.createMediaStreamDestination();
-        const source=ac.createBufferSource();source.buffer=state.voiceBuffer;source.connect(audioDestination);source.start();
+        const analyser=ac.createAnalyser();analyser.fftSize=256;
+        const source=ac.createBufferSource();source.buffer=state.voiceBuffer;
+        source.connect(analyser);analyser.connect(audioDestination);
+        state.analyser=analyser;state.analyserData=new Uint8Array(analyser.fftSize);state.lipSync.active=true;
+        source.onended=()=>{state.lipSync.active=false;state.analyser=null;state.analyserData=null;};
+        source.start();
         audioDestination.stream.getAudioTracks().forEach(track=>stream.addTrack(track));
       }
     }catch(error){console.warn('Audio export setup failed:',error);}
