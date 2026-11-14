@@ -38,7 +38,7 @@
       <div class="feature-teaser" role="note" aria-label="Feature announcement">
         <span class="feature-teaser-icon">✦</span>
         <span class="feature-teaser-copy"><strong>THE MOST ANTICIPATED FEATURE</strong><small>A hint from the beginning of time…</small></span>
-        <span class="feature-teaser-status">COMING SOON</span>
+        <span class="feature-teaser-status" id="campaignStatus">COMING SOON</span><span class="campaign-countdown" id="campaignCountdown">05:00</span><button class="campaign-reveal" id="revealUpdate" type="button">Reveal</button><a class="campaign-doc-link" id="updateDocLink" href="#updateDocument" hidden>Read the full update ↗</a>
       </div>
       <div class="stage-toolbar">
         <div class="stage-label"><span class="record-dot"></span> SCENE PREVIEW <span class="scene-counter" id="sceneCounter">01 / 01</span></div>
@@ -69,6 +69,18 @@
     </aside>
   </main>
 
+  <aside class="update-document" id="updateDocument" aria-hidden="true">
+    <div class="update-document-head"><span>THE BEGINNING OF TIME · UPDATE NOTES</span><button id="closeUpdateDocument" type="button" aria-label="Close update">×</button></div>
+    <article>
+      <p class="update-eyebrow">CARTOONLAB · FEATURE CAMPAIGN</p><h1>The Beginning of Time</h1>
+      <p class="update-lead">A new creative workspace for building characters and worlds from editable 3D meshes.</p>
+      <h2>Mini Mesh Lab</h2><p>The Characters side panel now includes a mesh maker. Create cubes, spheres, cylinders, cones, pyramids and toruses, then customise each mesh's name, colour, position, size and rotation. Meshes render in the scene preview and can be used as props alongside your characters.</p>
+      <h2>HSL project format rework</h2><p>HSL exports now use format version 3. The full project payload stores mesh vertices, faces, object transforms, colours, characters, scenes and voice settings. Importing an older HSL project remains supported, while version 3 preserves the new mesh objects.</p>
+      <h2>Campaign countdown</h2><p>The five-minute campaign timer counts down to the update reveal. When it reaches zero, the campaign status changes to UPDATE READY. The timer is persisted in this browser so refreshing the page does not restart it.</p>
+      <h2>What comes next</h2><ul><li>More mesh primitives and custom vertex editing</li><li>Drag-to-position and numeric transform tools</li><li>Mesh grouping, parenting and reusable presets</li><li>Improved material controls and lighting</li></ul>
+      <p class="update-footnote">Mesh editing is a lightweight primitive modeller in CartoonLab, not a replacement for the full Blender application.</p>
+    </article>
+  </aside>
   <div class="toast" id="toast" role="status"></div>
   <input type="file" id="audioUpload" accept="audio/*" hidden />
   <script type="importmap">
