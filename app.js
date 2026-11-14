@@ -4,7 +4,7 @@
   const $ = (id) => document.getElementById(id);
   const state = {
     title: 'Untitled story', tab: 'characters', selected: 0, playing: false, vip: localStorage.getItem('cartoonlab-vip') === 'true',
-    elapsed: 0, lastFrame: 0, audioUrl: null, audioName: '', kokoro: null, kokoroLoading: false, kokoroPromise: null, voiceBuffer: null, voiceText: '', voiceName: 'af_heart', voiceSpeed: 1, voiceBufferSpeed: 1, ttsBackendUrl: localStorage.getItem('cartoonlab-rust-tts-url') || '', ttsBackendKey: localStorage.getItem('cartoonlab-rust-tts-key') || '', audioContext: null, voiceSource: null, analyser: null, analyserData: null, lipSync: { active:false, startedAt:0, utterance:null },
+    elapsed: 0, lastFrame: 0, audioUrl: null, audioName: '', audioBuffer:null, kokoro: null, kokoroLoading: false, kokoroPromise: null, voiceBuffer: null, voiceText: '', voiceName: 'af_heart', voiceSpeed: 1, voiceBufferSpeed: 1, ttsBackendUrl: localStorage.getItem('cartoonlab-rust-tts-url') || '', ttsBackendKey: localStorage.getItem('cartoonlab-rust-tts-key') || '', audioContext: null, voiceSource: null, analyser: null, analyserData: null, lipSync: { active:false, startedAt:0, utterance:null },
     character: { name: 'Bloop', color: '#ff9cba', expression: 'happy', x: 640, size: 1, speech: 'What if...?', ttsText: 'What if...?' },
     scenes: [{ name: 'Opening scene', duration: 6, background: 'sunset', title: 'WHAT IF...?', subtitle: 'A tiny idea. A BIG adventure.', motion: 'bounce' }]
   };
@@ -327,7 +327,7 @@
     catch(error){console.error('Kokoro TTS:',error);toast('Voice failed: '+(error.message||'check your connection'));if(button)button.textContent='▶ Generate + speak';}
     finally{if(button)button.disabled=false;}
   }
-  function drawCharacter(c, time, scene){
+  function sceneLayersForSpeech(){return (state.scenes[currentTime().index]?.layers?.speech)!==false;}\n  function drawCharacter(c, time, scene){
     const movement=scene.characterMotion||({bounce:'bounce',float:'float',still:'idle'}[scene.motion]||'bounce');
     const cycle=time*(movement==='run'?10:movement==='walk'?5:3.5);
     const bob=movement==='bounce'?Math.abs(Math.sin(time*5))*22:movement==='float'?Math.sin(time*2.2)*24:movement==='jump'?Math.abs(Math.sin(time*2.8))*105:movement==='walk'?Math.abs(Math.sin(cycle))*7:movement==='run'?Math.abs(Math.sin(cycle))*13:movement==='wave'?Math.sin(time*3)*5:0;
@@ -386,7 +386,7 @@
       ctx.save();ctx.textAlign='center';ctx.font='800 76px Space Grotesk';ctx.lineWidth=8;ctx.strokeStyle='#38243d';ctx.strokeText('?',r*.82,-r*1.08);ctx.fillStyle='#fff';ctx.fillText('?',r*.82,-r*1.08);ctx.restore();
     }
     ctx.restore();
-    if(c.speech){ctx.save();ctx.font='700 25px DM Sans';const w=Math.min(460,ctx.measureText(c.speech).width+50);const bx=Math.min(1280-w-25,Math.max(25,x-w/2));const by=170;ctx.fillStyle='#fff';roundRect(ctx,bx,by,w,65,18);ctx.fill();ctx.beginPath();ctx.moveTo(x-12,by+62);ctx.lineTo(x+8,by+62);ctx.lineTo(x,by+82);ctx.fill();ctx.fillStyle='#332642';ctx.textAlign='center';ctx.fillText(c.speech,bx+w/2,by+41);ctx.restore();}
+    if(c.speech&&sceneLayersForSpeech()){ctx.save();ctx.font='700 25px DM Sans';const w=Math.min(460,ctx.measureText(c.speech).width+50);const bx=Math.min(1280-w-25,Math.max(25,x-w/2));const by=170;ctx.fillStyle='#fff';roundRect(ctx,bx,by,w,65,18);ctx.fill();ctx.beginPath();ctx.moveTo(x-12,by+62);ctx.lineTo(x+8,by+62);ctx.lineTo(x,by+82);ctx.fill();ctx.fillStyle='#332642';ctx.textAlign='center';ctx.fillText(c.speech,bx+w/2,by+41);ctx.restore();}
   }
   function roundRect(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath();}
 
@@ -487,8 +487,8 @@
     // The 3D landscape renderer is only used for ordinary scenes / fallback environments.
     const has3D=!!(window.CartoonLab3D&&window.CartoonLab3D.ready&&window.CartoonLab3D.render(state.elapsed,scene));
     if(has3D&&window.CartoonLab3D.canvas)ctx.drawImage(window.CartoonLab3D.canvas,0,0,1280,720);
-    if(scene.houseRoom){if(!has3D)drawHouseRoom(scene,state.elapsed);drawCharacter(state.character,state.elapsed,scene);if(scene.title){ctx.save();ctx.textAlign='center';ctx.fillStyle='#fff';ctx.shadowColor='#0008';ctx.shadowBlur=12;ctx.font='800 42px Space Grotesk';ctx.fillText(scene.title,640,72);ctx.restore();}if(scene.subtitle){ctx.save();ctx.textAlign='center';ctx.fillStyle='#fff';ctx.font='500 20px DM Sans';ctx.fillText(scene.subtitle,640,108);ctx.restore();}}
-    else if(!has3D){const grad=ctx.createLinearGradient(0,0,0,720);grad.addColorStop(0,bg[0]);grad.addColorStop(.65,bg[1]);grad.addColorStop(1,bg[2]);ctx.fillStyle=grad;ctx.fillRect(0,0,1280,720);}
+    const layers=scene.layers||{};\n    if(scene.houseRoom){if(layers.background!==false&&!has3D)drawHouseRoom(scene,state.elapsed);if(layers.character!==false)drawCharacter(studioCharacter(scene,activeTime.local),state.elapsed,scene);if(scene.title){ctx.save();ctx.textAlign='center';ctx.fillStyle='#fff';ctx.shadowColor='#0008';ctx.shadowBlur=12;ctx.font='800 42px Space Grotesk';ctx.fillText(scene.title,640,72);ctx.restore();}if(scene.subtitle){ctx.save();ctx.textAlign='center';ctx.fillStyle='#fff';ctx.font='500 20px DM Sans';ctx.fillText(scene.subtitle,640,108);ctx.restore();}}
+    else if(layers.background!==false&&!has3D){const grad=ctx.createLinearGradient(0,0,0,720);grad.addColorStop(0,bg[0]);grad.addColorStop(.65,bg[1]);grad.addColorStop(1,bg[2]);ctx.fillStyle=grad;ctx.fillRect(0,0,1280,720);}
     if(scene.houseRoom){drawCounter(scene,activeTime.local);return;}
     const t=state.elapsed, camera=scene.cameraMotion||'none';
     let zoom=1,panX=0,panY=0,shakeX=0,shakeY=0;
@@ -498,11 +498,11 @@
     if(camera==='pan-right')panX=Math.sin(t*.8)*90;
     if(camera==='pan-up')panY=-Math.sin(t*.8)*65;
     if(camera==='shake'){shakeX=(Math.random()-.5)*9;shakeY=(Math.random()-.5)*9;}
-    ctx.save();ctx.translate(640+panX+shakeX,360+panY+shakeY);ctx.scale(zoom,zoom);ctx.translate(-640,-360);
+    zoom*=Number(scene.cameraZoom)||1;panX+=Number(scene.cameraX)||0;panY+=Number(scene.cameraY)||0;\n    ctx.save();ctx.translate(640+panX+shakeX,360+panY+shakeY);ctx.scale(zoom,zoom);ctx.translate(-640,-360);
     // Decorative stars and animated scene props.
-    for(let i=0;i<34;i++){const x=(i*197+73)%1280,y=(i*113+39)%490;ctx.fillStyle='#ffffff'+(i%3?'35':'65');ctx.beginPath();ctx.arc(x,y,(i%3)+1.5,0,Math.PI*2);ctx.fill();}
+    if(layers.props!==false)for(let i=0;i<34;i++){const x=(i*197+73)%1280,y=(i*113+39)%490;ctx.fillStyle='#ffffff'+(i%3?'35':'65');ctx.beginPath();ctx.arc(x,y,(i%3)+1.5,0,Math.PI*2);ctx.fill();}
     const props=scene.objectMotion||'sparkles';
-    for(let i=0;i<6;i++){
+    if(layers.props!==false)for(let i=0;i<6;i++){
       const phase=t*(props==='fast'?2.1:props==='orbit'?1.15:.65)+i*1.047;
       const px=props==='orbit'?640+Math.cos(phase)*430:(i*211+110)%1280;
       const py=props==='rise'?700-((t*65+i*137)%780):props==='orbit'?350+Math.sin(phase)*205:((i*127+60)%520)+Math.sin(phase)*24;
@@ -516,9 +516,9 @@
     ctx.fillStyle='#ffffff13';ctx.beginPath();ctx.ellipse(640,660,560,65,0,0,Math.PI*2);ctx.fill();
     if(scene.title){ctx.textAlign='center';ctx.fillStyle='#fff';ctx.shadowColor='#241a3a88';ctx.shadowBlur=20;ctx.font='800 62px Space Grotesk';ctx.fillText(scene.title,640,100);ctx.shadowBlur=0;}
     if(scene.subtitle){ctx.textAlign='center';ctx.fillStyle='#fff';ctx.globalAlpha=.85;ctx.font='500 22px DM Sans';ctx.fillText(scene.subtitle,640,137);ctx.globalAlpha=1;}
-    drawCharacter(state.character,state.elapsed,scene);
+    if(state.onionSkin&&!state.playing){const prev=(scene.keyframes||[]).filter(k=>k.time<activeTime.local).slice(-1)[0];if(prev){ctx.save();ctx.globalAlpha=.18;drawCharacter({...state.character,...prev},state.elapsed-.08,scene);ctx.restore();}}\n    if(layers.character!==false)drawCharacter(studioCharacter(scene,activeTime.local),state.elapsed,scene);
     ctx.restore();
-    drawCounter(scene,activeTime.local);
+    if(layers.counter!==false)drawCounter(scene,activeTime.local);
     if(!state.vip){ctx.textAlign='left';ctx.fillStyle='#ffffff88';ctx.font='600 13px DM Sans';ctx.fillText('CARTOONLAB',35,680);}
   }
   function updateClock(){
@@ -637,6 +637,17 @@
       '<label class="field"><span>Legacy motion style</span><select id="sceneMotion"><option value="bounce" '+(s.motion==='bounce'?'selected':'')+'>Bouncy</option><option value="float" '+(s.motion==='float'?'selected':'')+'>Floaty</option><option value="still" '+(s.motion==='still'?'selected':'')+'>Still</option></select></label>'+
       '<label class="field"><span>Scene duration (seconds)</span><input id="sceneDuration" type="number" step="any" inputmode="decimal" value="'+s.duration+'"></label></div>'+
       '<button class="full-button" id="duplicateScene">▣ Duplicate scene</button><button class="full-button" id="deleteScene" title="Delete selected scene (Backspace)" style="margin-top:8px">− Delete scene</button>';
+    } else if(tab==='studio'){
+      const s=selectedScene(), layers=s.layers||(s.layers={background:true,props:true,character:true,speech:true,counter:true});
+      const rig=state.character.rig||(state.character.rig={armLeft:0,armRight:0});
+      html='<div class="inspector-section"><div class="section-title">KEYFRAMES</div><p class="muted-copy">Set the playhead, adjust the character, then capture a keyframe. Position and size interpolate between keys.</p><button class="full-button" id="addKeyframe">＋ Add keyframe</button><button class="full-button" id="clearKeyframes" style="margin-top:7px">Clear scene keyframes</button><div id="keyframeList" class="keyframe-list"></div></div>'+
+      '<div class="inspector-section"><div class="section-title">ONION SKIN</div><label class="field"><span><input id="onionSkin" type="checkbox" '+(state.onionSkin?'checked':'')+'> Show previous pose</span></label></div>'+
+      '<div class="inspector-section"><div class="section-title">CHARACTER RIG</div><label class="field"><span>Left arm angle</span><input id="rigArmLeft" type="number" value="'+Number(rig.armLeft||0)+'"></label><label class="field"><span>Right arm angle</span><input id="rigArmRight" type="number" value="'+Number(rig.armRight||0)+'"></label><button class="full-button" id="resetRig">Reset pose</button></div>'+
+      '<div class="inspector-section"><div class="section-title">LAYERS</div>'+[['background','Background'],['props','Particles'],['character','Character'],['speech','Speech bubble'],['counter','Counter']].map(([k,v])=>'<label class="field"><span><input type="checkbox" data-layer="'+k+'" '+(layers[k]!==false?'checked':'')+'> '+v+'</span></label>').join('')+'</div>'+
+      '<div class="inspector-section"><div class="section-title">CAMERA</div>'+field('Zoom','cameraZoom',s.cameraZoom||1,'number')+field('Pan X','cameraX',s.cameraX||0,'number')+field('Pan Y','cameraY',s.cameraY||0,'number')+'</div>'+
+      '<div class="inspector-section"><div class="section-title">PROJECT HISTORY</div><div class="field-row"><button class="full-button" id="undoEdit">↶ Undo</button><button class="full-button" id="redoEdit">↷ Redo</button></div><button class="full-button" id="backupProject" style="margin-top:7px">Download project backup</button><label class="full-button" style="display:block;margin-top:7px">Restore project backup<input id="restoreBackup" type="file" accept=".json,application/json" hidden></label></div>'+
+      '<div class="inspector-section"><div class="section-title">AUDIO WAVEFORM</div><canvas id="audioWaveform" width="900" height="90" class="audio-waveform"></canvas></div>'+
+      '<div class="inspector-section"><div class="section-title">EXPORT</div><label class="field"><span>Format</span><select id="exportFormat"><option value="webm">WebM</option><option value="mp4">MP4 (if supported)</option></select></label><button class="full-button" id="exportSelectedFormat">Export animation</button></div>';
     } else {
       html='<div class="inspector-section"><div class="section-title">AUDIO & VOICE</div><p class="muted-copy">Add your own narration or music track. Audio stays in this browser session.</p>'+
       '<button class="full-button" id="uploadAudio">＋ Import audio file</button>'+
@@ -644,7 +655,7 @@
       '<label class="field"><span>Sound effects</span><div class="choice-row"><button class="choice" data-sound="pop">Pop</button><button class="choice" data-sound="boing">Boing</button><button class="choice" data-sound="sparkle">Sparkle</button></div></label>'+
       '<p class="muted-copy">Imported audio can be previewed while editing. Video export currently records the animation preview; audio mixing is not included yet.</p></div>';
     }
-    $('inspectorContent').innerHTML=html;bindInspector();
+    $('inspectorContent').innerHTML=html;bindInspector();if(tab==='studio')bindStudio();
   }
   function bindInspector(){
     const bind=(id,fn,event='input')=>{const el=$(id);if(el)el.addEventListener(event,()=>fn(el.value));};
@@ -698,7 +709,7 @@
   $('fullscreen').onclick=()=>{const el=$('stageWrap');if(!document.fullscreenElement)el.requestFullscreen?.();else document.exitFullscreen?.();};
   $('fitStage').onclick=()=>toast('Preview is fitted to the editor');
   $('rendererToggle').onclick=()=>{const params=new URLSearchParams(location.search);if(params.get('renderer')==='webgpu')params.delete('renderer');else params.set('renderer','webgpu');const query=params.toString();location.search=query?'?'+query:'';};
-  $('audioUpload').onchange=e=>{const f=e.target.files[0];if(!f)return;if(state.audioUrl)URL.revokeObjectURL(state.audioUrl);state.audioUrl=URL.createObjectURL(f);state.audioName=f.name;const a=new Audio(state.audioUrl);a.play().catch(()=>{});renderInspector();toast('Audio loaded for preview');};
+  $('audioUpload').onchange=e=>{const f=e.target.files[0];if(!f)return;if(state.audioUrl)URL.revokeObjectURL(state.audioUrl);state.audioUrl=URL.createObjectURL(f);state.audioName=f.name;audioContext().decodeAudioData(await f.arrayBuffer()).then(b=>{state.audioBuffer=b;if(state.tab==='studio')drawStudioWave();}).catch(()=>{});const a=new Audio(state.audioUrl);a.play().catch(()=>{});renderInspector();toast('Audio loaded for preview');};
   function playSound(kind){const AC=window.AudioContext||window.webkitAudioContext;if(!AC){toast('Sound effects are unavailable');return;}const ac=new AC(),o=ac.createOscillator(),g=ac.createGain();o.connect(g);g.connect(ac.destination);const now=ac.currentTime;o.type=kind==='boing'?'triangle':'sine';o.frequency.setValueAtTime(kind==='boing'?180:kind==='sparkle'?900:520,now);o.frequency.exponentialRampToValueAtTime(kind==='boing'?520:kind==='sparkle'?1500:180,now+.22);g.gain.setValueAtTime(.12,now);g.gain.exponentialRampToValueAtTime(.001,now+.25);o.start();o.stop(now+.26);}
   $('exportVideo').onclick=async()=>{
     if(!canvas.captureStream||!window.MediaRecorder){toast('Video recording is not supported in this browser');return;}
@@ -762,7 +773,40 @@
       toast('Video export failed: '+(error.message||'check browser permissions'));
     }
   };
-  renderTimeline();renderInspector();requestAnimationFrame(frame);
+
+  // Studio feature layer: keyframes, onion skin, layers, rig controls, history and export.
+  state.onionSkin=false;
+  const undoStack=[],redoStack=[];
+  function snapshot(){return JSON.stringify({title:state.title,character:state.character,scenes:state.scenes,selected:state.selected,elapsed:state.elapsed});}
+  let lastSnapshot=snapshot();
+  function checkpoint(){const now=snapshot();if(now!==lastSnapshot){undoStack.push(lastSnapshot);if(undoStack.length>60)undoStack.shift();lastSnapshot=now;redoStack.length=0;}}
+  function restoreSnapshot(raw){const d=JSON.parse(raw);state.title=d.title;state.character=d.character;state.scenes=d.scenes;state.selected=Math.min(d.selected||0,state.scenes.length-1);state.elapsed=d.elapsed||0;$('projectTitle').textContent=state.title;renderTimeline();renderInspector();draw();updateClock();saveProject();lastSnapshot=snapshot();}
+  function undoStudio(){if(!undoStack.length){toast('Nothing to undo');return;}redoStack.push(snapshot());restoreSnapshot(undoStack.pop());toast('Undo');}
+  function redoStudio(){if(!redoStack.length){toast('Nothing to redo');return;}undoStack.push(snapshot());restoreSnapshot(redoStack.pop());toast('Redo');}
+  function studioCharacter(scene,local){const c={...state.character};const keys=(scene.keyframes||[]).slice().sort((a,b)=>a.time-b.time);if(!keys.length)return c;let a=keys[0],b=keys[keys.length-1];for(const k of keys){if(k.time<=local)a=k;if(k.time>=local){b=k;break;}}const p=Math.max(0,Math.min(1,(local-a.time)/Math.max(.001,b.time-a.time)));for(const key of ['x','size'])if(Number.isFinite(a[key])&&Number.isFinite(b[key]))c[key]=a[key]+(b[key]-a[key])*p;if(p>=.5)c.expression=b.expression||c.expression;return c;}
+  function addStudioKey(){const s=selectedScene(),t=currentTime().local;s.keyframes=s.keyframes||[];const k={time:Number(t.toFixed(3)),x:state.character.x,size:state.character.size,expression:state.character.expression};const i=s.keyframes.findIndex(x=>Math.abs(x.time-t)<.025);if(i>=0)s.keyframes[i]=k;else s.keyframes.push(k);s.keyframes.sort((a,b)=>a.time-b.time);checkpoint();renderInspector();scheduleSave();toast('Keyframe added at '+k.time.toFixed(2)+'s');}
+  function drawStudioWave(){const cv=$('audioWaveform');if(!cv)return;const c=cv.getContext('2d');c.fillStyle='#171522';c.fillRect(0,0,cv.width,cv.height);const data=state.audioBuffer?.getChannelData(0);if(!data){c.fillStyle='#aaa';c.textAlign='center';c.fillText('Import audio to view waveform',cv.width/2,48);return;}c.strokeStyle='#b59fff';for(let x=0;x<cv.width;x++){const start=Math.floor(x*data.length/cv.width),end=Math.max(start+1,Math.floor((x+1)*data.length/cv.width));let peak=0;for(let j=start;j<end;j++)peak=Math.max(peak,Math.abs(data[j]));c.beginPath();c.moveTo(x,45-peak*40);c.lineTo(x,45+peak*40);c.stroke();}}
+  function bindStudio(){
+    const s=selectedScene(),layers=s.layers||(s.layers={background:true,props:true,character:true,speech:true,counter:true}),rig=state.character.rig||(state.character.rig={armLeft:0,armRight:0});
+    const list=$('keyframeList');if(list){list.innerHTML=(s.keyframes||[]).map((k,i)=>'<button class="choice" data-key="'+i+'">'+k.time.toFixed(2)+'s · '+(k.expression||'pose')+'</button>').join('')||'<p class="muted-copy">No keyframes yet.</p>';list.querySelectorAll('[data-key]').forEach(b=>b.onclick=()=>{const k=s.keyframes[Number(b.dataset.key)];state.elapsed=state.scenes.slice(0,state.selected).reduce((n,x)=>n+x.duration,0)+k.time;state.character.x=k.x;state.character.size=k.size;state.character.expression=k.expression;draw();updateClock();});}
+    if($('addKeyframe'))$('addKeyframe').onclick=addStudioKey;
+    if($('clearKeyframes'))$('clearKeyframes').onclick=()=>{s.keyframes=[];renderInspector();scheduleSave();};
+    if($('onionSkin'))$('onionSkin').onchange=e=>{state.onionSkin=e.target.checked;draw();};
+    ['armLeft','armRight'].forEach(k=>{const el=$('rig'+k[0].toUpperCase()+k.slice(1));if(el)el.oninput=()=>{rig[k]=Number(el.value)||0;draw();scheduleSave();};});
+    if($('resetRig'))$('resetRig').onclick=()=>{state.character.rig={armLeft:0,armRight:0};renderInspector();draw();scheduleSave();};
+    document.querySelectorAll('[data-layer]').forEach(el=>el.onchange=()=>{layers[el.dataset.layer]=el.checked;draw();scheduleSave();});
+    ['cameraZoom','cameraX','cameraY'].forEach(k=>{const el=$(k);if(el)el.oninput=()=>{s[k]=Number(el.value)||0;draw();scheduleSave();};});
+    if($('undoEdit'))$('undoEdit').onclick=undoStudio;if($('redoEdit'))$('redoEdit').onclick=redoStudio;
+    if($('backupProject'))$('backupProject').onclick=()=>{const blob=new Blob([JSON.stringify({version:1,...JSON.parse(snapshot())},null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='cartoonlab-backup.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);};
+    if($('restoreBackup'))$('restoreBackup').onchange=async e=>{const f=e.target.files?.[0];if(!f)return;try{const d=JSON.parse(await f.text());if(!Array.isArray(d.scenes)||!d.scenes.length)throw new Error('Invalid backup');checkpoint();restoreSnapshot(JSON.stringify(d));toast('Backup restored');}catch(err){toast('Restore failed: '+err.message);}};
+    if($('exportSelectedFormat'))$('exportSelectedFormat').onclick=()=>exportStudio($('exportFormat').value);
+    drawStudioWave();
+  }
+  async function exportStudio(format){const types=format==='mp4'?['video/mp4;codecs=avc1.42E01E','video/mp4']:['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'];const type=types.find(x=>MediaRecorder.isTypeSupported(x));if(!canvas.captureStream||!type){toast(format.toUpperCase()+' is not supported by this browser');return;}const stream=canvas.captureStream(30),rec=new MediaRecorder(stream,{mimeType:type}),chunks=[];rec.ondataavailable=e=>{if(e.data?.size)chunks.push(e.data);};rec.onstop=()=>{const blob=new Blob(chunks,{type}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=(state.title||'cartoonlab')+'.'+(format==='mp4'?'mp4':'webm');a.click();setTimeout(()=>URL.revokeObjectURL(url),2500);stream.getTracks().forEach(t=>t.stop());state.playing=false;$('playButton').textContent='▶';toast('Export complete');};state.elapsed=0;state.playing=true;$('playButton').textContent='Ⅱ';rec.start(100);setTimeout(()=>{if(rec.state!=='inactive')rec.stop();},totalDuration()*1000+150);}
+  document.addEventListener('input',checkpoint);
+  document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?redoStudio():undoStudio();}else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='y'){e.preventDefault();redoStudio();}});
+
+    renderTimeline();renderInspector();requestAnimationFrame(frame);
   // Download and cache the voice model automatically after the editor is ready.
   // This is a one-time first-visit download; the browser/runtime cache handles later visits.
   const preloadKokoro=()=>{if(state.ttsBackendUrl)return;return loadKokoro().catch(error=>console.warn('Kokoro background preload failed; it will retry when narration is used:',error));};
