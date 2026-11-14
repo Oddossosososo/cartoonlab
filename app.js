@@ -467,16 +467,23 @@
     const interval=Number.isFinite(intervalRaw)&&intervalRaw>0?intervalRaw:1;
     const delayRaw=Number(scene.counterDelay);
     const delay=Number.isFinite(delayRaw)&&delayRaw>0?delayRaw:0;
-    const startRaw=Number(scene.counterStart);
-    const start=Number.isFinite(startRaw)?startRaw:1;
-    const stepRaw=Number(scene.counterStep);
-    const step=Number.isFinite(stepRaw)?stepRaw:1;
     const elapsed=Math.max(0,Number(local)||0);
-    const increments=elapsed<delay?0:Math.floor((elapsed-delay)/interval)+1;
-    const value=start+increments*step;
-    const label=String(scene.counterLabel||'DAY').trim();
-    const unit=String(scene.counterUnit||'').trim();
-    const counterText=(label?label+' ':'')+value+(unit?' '+unit:'');
+    let value,label,unit,counterText;
+    if(scene.counterMode==='years'){
+      const progress=Math.max(0,Math.min(1,state.elapsed/Math.max(.001,totalDuration())));
+      value=Math.round((Number(scene.counterStart)||0)+progress*((Number(scene.counterEnd)||250)-(Number(scene.counterStart)||0)));
+      counterText=value+' '+(value===1?'YEAR':'YEARS');
+    }else{
+      const startRaw=Number(scene.counterStart);
+      const start=Number.isFinite(startRaw)?startRaw:1;
+      const stepRaw=Number(scene.counterStep);
+      const step=Number.isFinite(stepRaw)?stepRaw:1;
+      const increments=elapsed<delay?0:Math.floor((elapsed-delay)/interval)+1;
+      value=start+increments*step;
+      label=String(scene.counterLabel||'DAY').trim();
+      unit=String(scene.counterUnit||'').trim();
+      counterText=(label?label+' ':'')+value+(unit?' '+unit:'');
+    }
     ctx.save();
     ctx.font='800 27px Space Grotesk';ctx.textAlign='center';ctx.textBaseline='middle';
     const width=Math.max(116,ctx.measureText(counterText).width+42),height=58,pad=22;
@@ -660,7 +667,8 @@
       '<div class="inspector-section"><div class="section-title">CAMERA</div>'+field('Zoom','cameraZoom',s.cameraZoom||1,'number')+field('Pan X','cameraX',s.cameraX||0,'number')+field('Pan Y','cameraY',s.cameraY||0,'number')+'</div>'+
       '<div class="inspector-section"><div class="section-title">PROJECT HISTORY</div><div class="field-row"><button class="full-button" id="undoEdit">↶ Undo</button><button class="full-button" id="redoEdit">↷ Redo</button></div><button class="full-button" id="backupProject" style="margin-top:7px">Download project backup</button><label class="full-button" style="display:block;margin-top:7px">Restore project backup<input id="restoreBackup" type="file" accept=".json,application/json" hidden></label></div>'+
       '<div class="inspector-section"><div class="section-title">AUDIO WAVEFORM</div><canvas id="audioWaveform" width="900" height="90" class="audio-waveform"></canvas></div>'+
-      '<div class="inspector-section"><div class="section-title">EXPORT</div><label class="field"><span>Format</span><select id="exportFormat"><option value="webm">WebM</option><option value="mp4">MP4 (if supported)</option></select></label><button class="full-button" id="exportSelectedFormat">Export animation</button></div>';
+      '<div class="inspector-section"><div class="section-title">HYPERSHORT · HSL</div><p class="muted-copy">Tiny video script. Export or import .hsl files.</p><button class="full-button" id="exportHsl">Export .hsl</button><label class="full-button" style="display:block;margin-top:7px">Import .hsl<input id="importHsl" type="file" accept=".hsl,.txt,text/plain" hidden></label><p class="muted-copy">Commands: @seconds background · >title · _subtitle · #start-endy</p></div>'+
+      '<div class="inspector-section"><div class="section-title">VIDEO EXPORT</div><label class="field"><span>Format</span><select id="exportFormat"><option value="webm">WebM</option><option value="mp4">MP4 (if supported)</option></select></label><button class="full-button" id="exportSelectedFormat">Export video</button></div>';
     } else {
       html='<div class="inspector-section"><div class="section-title">AUDIO & VOICE</div><p class="muted-copy">Add your own narration or music track. Audio stays in this browser session.</p>'+
       '<button class="full-button" id="uploadAudio">＋ Import audio file</button>'+
@@ -801,6 +809,48 @@
   function studioCharacter(scene,local){const c={...state.character};const keys=(scene.keyframes||[]).slice().sort((a,b)=>a.time-b.time);if(!keys.length)return c;let a=keys[0],b=keys[keys.length-1];for(const k of keys){if(k.time<=local)a=k;if(k.time>=local){b=k;break;}}const p=Math.max(0,Math.min(1,(local-a.time)/Math.max(.001,b.time-a.time)));for(const key of ['x','size'])if(Number.isFinite(a[key])&&Number.isFinite(b[key]))c[key]=a[key]+(b[key]-a[key])*p;if(p>=.5)c.expression=b.expression||c.expression;return c;}
   function addStudioKey(){const s=selectedScene(),t=currentTime().local;s.keyframes=s.keyframes||[];const k={time:Number(t.toFixed(3)),x:state.character.x,size:state.character.size,expression:state.character.expression};const i=s.keyframes.findIndex(x=>Math.abs(x.time-t)<.025);if(i>=0)s.keyframes[i]=k;else s.keyframes.push(k);s.keyframes.sort((a,b)=>a.time-b.time);checkpoint();renderInspector();scheduleSave();toast('Keyframe added at '+k.time.toFixed(2)+'s');}
   function drawStudioWave(){const cv=$('audioWaveform');if(!cv)return;const c=cv.getContext('2d');c.fillStyle='#171522';c.fillRect(0,0,cv.width,cv.height);const data=state.audioBuffer?.getChannelData(0);if(!data){c.fillStyle='#aaa';c.textAlign='center';c.fillText('Import audio to view waveform',cv.width/2,48);return;}c.strokeStyle='#b59fff';for(let x=0;x<cv.width;x++){const start=Math.floor(x*data.length/cv.width),end=Math.max(start+1,Math.floor((x+1)*data.length/cv.width));let peak=0;for(let j=start;j<end;j++)peak=Math.max(peak,Math.abs(data[j]));c.beginPath();c.moveTo(x,45-peak*40);c.lineTo(x,45+peak*40);c.stroke();}}
+  function hypershortSource(){
+    const lines=[];
+    state.scenes.forEach(scene=>{
+      lines.push('@'+Math.max(.1,Number(scene.duration)||5)+' '+(scene.background||'sunset'));
+      if(scene.title)lines.push('>'+JSON.stringify(scene.title));
+      if(scene.subtitle)lines.push('_'+JSON.stringify(scene.subtitle));
+    });
+    const first=state.scenes.find(scene=>scene.counterMode==='years');
+    if(first)lines.push('#'+(Number(first.counterStart)||0)+'-'+(Number(first.counterEnd)||250)+'y');
+    return lines.join('\\n')+'\\n';
+  }
+  function downloadText(name,content,type){
+    const url=URL.createObjectURL(new Blob([content],{type}));
+    const a=document.createElement('a');a.href=url;a.download=name;a.click();
+    setTimeout(()=>URL.revokeObjectURL(url),2000);
+  }
+  function importHypershort(source){
+    const scenes=[];let current=null,years=null;
+    for(const raw of String(source).split(/\\r?\\n/)){
+      const line=raw.trim();if(!line||line.startsWith('//'))continue;
+      if(line[0]==='@'){
+        const m=line.match(/^@([\\d.]+)\\s+([a-z-]+)$/i);
+        if(!m)throw new Error('Bad scene command: '+line);
+        current={name:'HSL scene '+(scenes.length+1),duration:Math.max(.1,Number(m[1])),background:m[2],title:'',subtitle:'',motion:'bounce'};
+        scenes.push(current);
+      }else if(line[0]==='>'||line[0]==='_'){
+        if(!current)throw new Error('Add a scene with @ first');
+        let value=line.slice(1).trim();
+        try{value=JSON.parse(value);}catch(error){if(value.startsWith('"'))throw new Error('Bad quoted text: '+line);}
+        if(line[0]==='>')current.title=String(value);else current.subtitle=String(value);
+      }else if(line[0]==='#'){
+        const m=line.match(/^#(-?\\d+(?:\\.\\d+)?)-(-?\\d+(?:\\.\\d+)?)y$/i);
+        if(!m)throw new Error('Bad years command: '+line);
+        years={start:Number(m[1]),end:Number(m[2])};
+      }else throw new Error('Unknown command: '+line);
+    }
+    if(!scenes.length)throw new Error('No scenes found. Start with @duration background');
+    if(years)scenes.forEach(scene=>{scene.counterEnabled=true;scene.counterMode='years';scene.counterStart=years.start;scene.counterEnd=years.end;scene.counterCorner='top-right';});
+    state.scenes=scenes;state.selected=0;state.elapsed=0;state.title='Hypershort video';
+    $('projectTitle').textContent=state.title;renderTimeline();renderInspector();draw();updateClock();saveProject();
+    toast('Imported '+scenes.length+' scene(s) from HSL');
+  }
   function bindStudio(){
     const s=selectedScene(),layers=s.layers||(s.layers={background:true,props:true,character:true,speech:true,counter:true}),rig=state.character.rig||(state.character.rig={armLeft:0,armRight:0});
     const list=$('keyframeList');if(list){list.innerHTML=(s.keyframes||[]).map((k,i)=>'<button class="choice" data-key="'+i+'">'+k.time.toFixed(2)+'s · '+(k.expression||'pose')+'</button>').join('')||'<p class="muted-copy">No keyframes yet.</p>';list.querySelectorAll('[data-key]').forEach(b=>b.onclick=()=>{const k=s.keyframes[Number(b.dataset.key)];state.elapsed=state.scenes.slice(0,state.selected).reduce((n,x)=>n+x.duration,0)+k.time;state.character.x=k.x;state.character.size=k.size;state.character.expression=k.expression;draw();updateClock();});}
@@ -815,6 +865,8 @@
     if($('backupProject'))$('backupProject').onclick=()=>{const blob=new Blob([JSON.stringify({version:1,...JSON.parse(snapshot())},null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='cartoonlab-backup.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);};
     if($('restoreBackup'))$('restoreBackup').onchange=async e=>{const f=e.target.files?.[0];if(!f)return;try{const d=JSON.parse(await f.text());if(!Array.isArray(d.scenes)||!d.scenes.length)throw new Error('Invalid backup');checkpoint();restoreSnapshot(JSON.stringify(d));toast('Backup restored');}catch(err){toast('Restore failed: '+err.message);}};
     if($('exportSelectedFormat'))$('exportSelectedFormat').onclick=()=>exportStudio($('exportFormat').value);
+    if($('exportHsl'))$('exportHsl').onclick=()=>downloadText((state.title||'video').replace(/[^a-z0-9-_]+/gi,'-')+'.hsl',hypershortSource(),'text/plain');
+    if($('importHsl'))$('importHsl').onchange=async e=>{const file=e.target.files?.[0];if(!file)return;try{importHypershort(await file.text());}catch(error){toast('HSL import: '+error.message);}e.target.value='';};
     drawStudioWave();
   }
   async function exportStudio(format){
