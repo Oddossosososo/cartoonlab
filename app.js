@@ -92,45 +92,6 @@
   function projectSnapshot(){
     return {version:1,title:state.title,character:state.character,scenes:state.scenes,selected:state.selected,elapsed:state.elapsed,vip:state.vip,voiceSpeed:state.voiceSpeed};
   }
-  function makeShareCode(){
-    const payload={...projectSnapshot(),audioTrackName:state.audioName||'',sharedAt:new Date().toISOString()};
-    const bytes=new TextEncoder().encode(JSON.stringify(payload));
-    let binary='';
-    for(let i=0;i<bytes.length;i++)binary+=String.fromCharCode(bytes[i]);
-    return 'CL1-'+btoa(binary).split('+').join('-').split('/').join('_').replace(/=+$/,'');
-  }
-  async function shareProjectCode(){
-    const code=makeShareCode();
-    try{
-      if(navigator.clipboard && window.isSecureContext){
-        await navigator.clipboard.writeText(code);
-      }else{
-        const field=document.createElement('textarea');
-        field.value=code;
-        field.setAttribute('readonly','');
-        field.style.position='fixed';
-        field.style.opacity='0';
-        document.body.appendChild(field);
-        field.select();
-        const copied=document.execCommand('copy');
-        field.remove();
-        if(!copied)throw new Error('Clipboard copy was blocked');
-      }
-      toast('Share code copied! Paste it into ChatGPT for a rating.');
-    }catch(error){
-      const field=document.createElement('textarea');
-      field.value=code;
-      field.setAttribute('readonly','');
-      field.style.position='fixed';
-      field.style.opacity='0';
-      document.body.appendChild(field);
-      field.select();
-      let copied=false;
-      try{copied=document.execCommand('copy');}catch(copyError){}
-      field.remove();
-      toast(copied?'Share code copied!':'Could not access clipboard — please check browser permissions.');
-    }
-  }
   function saveProject(){
     try{
       localStorage.setItem(PROJECT_KEY,JSON.stringify(projectSnapshot()));
@@ -654,9 +615,9 @@
       '<div class="inspector-section"><div class="section-title">CHARACTER RIG</div>'+[['armLeft','Left arm'],['armRight','Right arm'],['legLeft','Left leg'],['legRight','Right leg']].map(([k,label])=>'<label class="field"><span>'+label+' angle</span><input id="rig'+k[0].toUpperCase()+k.slice(1)+'" type="number" value="'+Number(rig[k]||0)+'"></label>').join('')+'<button class="full-button" id="resetRig">Reset pose</button></div>'+
       '<div class="inspector-section"><div class="section-title">LAYER GROUPS</div><div class="field-row"><button class="full-button" data-layer-group="environment">Environment group</button><button class="full-button" data-layer-group="foreground">Foreground group</button></div></div><div class="inspector-section"><div class="section-title">LAYERS</div>'+[['background','Background'],['props','Particles'],['character','Character'],['speech','Speech bubble'],['counter','Counter']].map(([k,v])=>'<label class="field"><span><input type="checkbox" data-layer="'+k+'" '+(layers[k]!==false?'checked':'')+'> '+v+'</span></label>').join('')+'</div>'+
       '<div class="inspector-section"><div class="section-title">CAMERA</div>'+field('Zoom','cameraZoom',s.cameraZoom||1,'number')+field('Pan X','cameraX',s.cameraX||0,'number')+field('Pan Y','cameraY',s.cameraY||0,'number')+'</div>'+
-      '<div class="inspector-section"><div class="section-title">PROJECT HISTORY</div><div class="field-row"><button class="full-button" id="undoEdit">↶ Undo</button><button class="full-button" id="redoEdit">↷ Redo</button></div><button class="full-button" id="backupProject" style="margin-top:7px">Download project backup</button><label class="full-button" style="display:block;margin-top:7px">Restore project backup<input id="restoreBackup" type="file" accept=".json,application/json" hidden></label></div>'+
+      '<div class="inspector-section"><div class="section-title">PROJECT HISTORY</div><div class="field-row"><button class="full-button" id="undoEdit">↶ Undo</button><button class="full-button" id="redoEdit">↷ Redo</button></div></div>'+
       '<div class="inspector-section"><div class="section-title">AUDIO WAVEFORM</div><canvas id="audioWaveform" width="900" height="90" class="audio-waveform"></canvas></div>'+
-      '<div class="inspector-section"><div class="section-title">HYPERSHORT · HSL</div><p class="muted-copy">Tiny video script. Export or import .hsl files.</p><button class="full-button" id="exportHsl">Export .hsl</button><label class="full-button" style="display:block;margin-top:7px">Import .hsl<input id="importHsl" type="file" accept=".hsl,.txt,text/plain" hidden></label><p class="muted-copy">Commands: @seconds background · >title · _subtitle · #start-endy</p></div>'+
+      '<div class="inspector-section"><div class="section-title">HYPERSHORT · HSL</div><p class="muted-copy">Complete local project format. HSL files preserve characters, scenes, settings, and keyframes.</p><button class="full-button" id="exportHsl">Export .hsl</button><label class="full-button" style="display:block;margin-top:7px">Import .hsl<input id="importHsl" type="file" accept=".hsl,.txt,text/plain" hidden></label><p class="muted-copy">All project data is embedded in the .hsl file. Legacy scene scripts are also supported.</p></div>'+
       '<div class="inspector-section"><div class="section-title">VIDEO EXPORT</div><label class="field"><span>Format</span><select id="exportFormat"><option value="webm">WebM</option><option value="mp4">MP4 (if supported)</option></select></label><button class="full-button" id="exportSelectedFormat">Export video</button></div>';
     } else {
       html='<div class="inspector-section"><div class="section-title">AUDIO & VOICE</div><p class="muted-copy">Add your own narration or music track. Audio stays in this browser session.</p>'+
@@ -707,7 +668,6 @@
   function updateVipButton(){if(vipButton){vipButton.textContent=state.vip?'✦ VIP ON':'✦ VIP';vipButton.classList.toggle('vip-active',state.vip);}}
   if(vipButton)vipButton.onclick=()=>{state.vip=!state.vip;localStorage.setItem('cartoonlab-vip',String(state.vip));updateVipButton();toast(state.vip?'VIP mode enabled · watermark hidden':'VIP mode disabled · watermark restored');};
   updateVipButton();
-  $('shareCode').onclick=shareProjectCode;
   $('smoothPreview').onclick=renderSmoothPreview;
   $('sceneTrack').addEventListener('pointerup',()=>clearSmoothPreview());
   smoothVideo.addEventListener('ended',()=>{smoothPreviewActive=true;});
@@ -793,15 +753,25 @@
   function studioCharacter(scene,local){const c={...state.character};const keys=(scene.keyframes||[]).slice().sort((a,b)=>a.time-b.time);if(!keys.length)return c;let a=keys[0],b=keys[keys.length-1];for(const k of keys){if(k.time<=local)a=k;if(k.time>=local){b=k;break;}}const p=Math.max(0,Math.min(1,(local-a.time)/Math.max(.001,b.time-a.time)));for(const key of ['x','size'])if(Number.isFinite(a[key])&&Number.isFinite(b[key]))c[key]=a[key]+(b[key]-a[key])*p;if(p>=.5)c.expression=b.expression||c.expression;return c;}
   function addStudioKey(){const s=selectedScene(),t=currentTime().local;s.keyframes=s.keyframes||[];const k={time:Number(t.toFixed(3)),x:state.character.x,size:state.character.size,expression:state.character.expression};const i=s.keyframes.findIndex(x=>Math.abs(x.time-t)<.025);if(i>=0)s.keyframes[i]=k;else s.keyframes.push(k);s.keyframes.sort((a,b)=>a.time-b.time);checkpoint();renderInspector();scheduleSave();toast('Keyframe added at '+k.time.toFixed(2)+'s');}
   function drawStudioWave(){const cv=$('audioWaveform');if(!cv)return;const c=cv.getContext('2d');c.fillStyle='#171522';c.fillRect(0,0,cv.width,cv.height);const data=state.audioBuffer?.getChannelData(0);if(!data){c.fillStyle='#aaa';c.textAlign='center';c.fillText('Import audio to view waveform',cv.width/2,48);return;}c.strokeStyle='#b59fff';for(let x=0;x<cv.width;x++){const start=Math.floor(x*data.length/cv.width),end=Math.max(start+1,Math.floor((x+1)*data.length/cv.width));let peak=0;for(let j=start;j<end;j++)peak=Math.max(peak,Math.abs(data[j]));c.beginPath();c.moveTo(x,45-peak*40);c.lineTo(x,45+peak*40);c.stroke();}}
+  function encodeHslPayload(value){
+    const bytes=new TextEncoder().encode(JSON.stringify(value));
+    let binary='';
+    for(let i=0;i<bytes.length;i++)binary+=String.fromCharCode(bytes[i]);
+    return btoa(binary).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  }
+  function decodeHslPayload(value){
+    const base64=value.replace(/-/g,'+').replace(/_/g,'/');
+    const binary=atob(base64+'='.repeat((4-base64.length%4)%4));
+    const bytes=Uint8Array.from(binary,c=>c.charCodeAt(0));
+    return JSON.parse(new TextDecoder().decode(bytes));
+  }
   function hypershortSource(){
-    const lines=[];
+    const lines=['!cartoonlab 2','!project '+encodeHslPayload(projectSnapshot())];
     state.scenes.forEach(scene=>{
       lines.push('@'+Math.max(.1,Number(scene.duration)||5)+' '+(scene.background||'sunset'));
       if(scene.title)lines.push('>'+JSON.stringify(scene.title));
       if(scene.subtitle)lines.push('_'+JSON.stringify(scene.subtitle));
     });
-    const first=state.scenes.find(scene=>scene.counterMode==='years');
-    if(first)lines.push('#'+(Number(first.counterStart)||0)+'-'+(Number(first.counterEnd)||250)+'y');
     return lines.join('\n')+'\n';
   }
   function downloadBlob(name,blob){
@@ -817,9 +787,29 @@
     downloadBlob(name,new Blob([content],{type:type||'text/plain;charset=utf-8'}));
   }
   function importHypershort(source){
+    const lines=String(source).split(/\r?\n/).map(line=>line.trim()).filter(line=>line&&!line.startsWith('//'));
+    const payloadLine=lines.find(line=>line.startsWith('!project '));
+    if(payloadLine){
+      const project=decodeHslPayload(payloadLine.slice(9).trim());
+      if(!project||!Array.isArray(project.scenes)||!project.scenes.length)throw new Error('The HSL project data is invalid');
+      const scenes=project.scenes.filter(scene=>scene&&typeof scene==='object'&&Number.isFinite(Number(scene.duration))&&Number(scene.duration)>0);
+      if(!scenes.length)throw new Error('The HSL file contains no valid scenes');
+      checkpoint();
+      state.title=typeof project.title==='string'&&project.title?project.title:'Imported HSL project';
+      if(project.character&&typeof project.character==='object')state.character={...state.character,...project.character};
+      state.scenes=scenes;
+      state.selected=Math.max(0,Math.min(scenes.length-1,Number(project.selected)||0));
+      state.elapsed=Math.max(0,Math.min(Number(project.elapsed)||0,totalDuration()));
+      if(typeof project.vip==='boolean')state.vip=project.vip;
+      if(Number.isFinite(Number(project.voiceSpeed)))state.voiceSpeed=Number(project.voiceSpeed);
+      $('projectTitle').textContent=state.title;
+      renderTimeline();renderInspector();draw();updateClock();saveProject();
+      toast('Imported complete HSL project · '+scenes.length+' scene(s)');
+      return;
+    }
     const scenes=[];let current=null,years=null;
-    for(const raw of String(source).split(/\r?\n/)){
-      const line=raw.trim();if(!line||line.startsWith('//'))continue;
+    for(const line of lines){
+      if(line.startsWith('!cartoonlab '))continue;
       if(line[0]==='@'){
         const m=line.match(/^@([\d.]+)\s+([a-z-]+)$/i);
         if(!m)throw new Error('Bad scene command: '+line);
@@ -834,11 +824,11 @@
         const m=line.match(/^#(-?\d+(?:\.\d+)?)-(-?\d+(?:\.\d+)?)y$/i);
         if(!m)throw new Error('Bad years command: '+line);
         years={start:Number(m[1]),end:Number(m[2])};
-      }else throw new Error('Unknown command: '+line);
+      }else throw new Error('Unknown HSL command: '+line);
     }
     if(!scenes.length)throw new Error('No scenes found. Start with @duration background');
     if(years)scenes.forEach(scene=>{scene.counterEnabled=true;scene.counterMode='years';scene.counterStart=years.start;scene.counterEnd=years.end;scene.counterCorner='top-right';});
-    state.scenes=scenes;state.selected=0;state.elapsed=0;state.title='Hypershort video';
+    checkpoint();state.scenes=scenes;state.selected=0;state.elapsed=0;state.title='Hypershort video';
     $('projectTitle').textContent=state.title;renderTimeline();renderInspector();draw();updateClock();saveProject();
     toast('Imported '+scenes.length+' scene(s) from HSL');
   }
@@ -854,8 +844,6 @@
     document.querySelectorAll('[data-layer-group]').forEach(el=>el.onclick=()=>{const keys=el.dataset.layerGroup==='environment'?['background','props']:['character','speech','counter'];const show=keys.some(k=>layers[k]===false);keys.forEach(k=>layers[k]=show);document.querySelectorAll('[data-layer]').forEach(input=>input.checked=layers[input.dataset.layer]!==false);draw();scheduleSave();});
     ['cameraZoom','cameraX','cameraY'].forEach(k=>{const el=$(k);if(el)el.oninput=()=>{s[k]=Number(el.value)||0;draw();scheduleSave();};});
     if($('undoEdit'))$('undoEdit').onclick=undoStudio;if($('redoEdit'))$('redoEdit').onclick=redoStudio;
-    if($('backupProject'))$('backupProject').onclick=()=>{const blob=new Blob([JSON.stringify({version:1,...JSON.parse(snapshot())},null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='cartoonlab-backup.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);};
-    if($('restoreBackup'))$('restoreBackup').onchange=async e=>{const f=e.target.files?.[0];if(!f)return;try{const d=JSON.parse(await f.text());if(!Array.isArray(d.scenes)||!d.scenes.length)throw new Error('Invalid backup');checkpoint();restoreSnapshot(JSON.stringify(d));toast('Backup restored');}catch(err){toast('Restore failed: '+err.message);}};
     if($('exportSelectedFormat'))$('exportSelectedFormat').onclick=()=>exportStudio($('exportFormat').value);
     if($('exportHsl'))$('exportHsl').onclick=()=>downloadText((state.title||'video').replace(/[^a-z0-9-_]+/gi,'-')+'.hsl',hypershortSource(),'text/plain');
     if($('importHsl'))$('importHsl').onchange=async e=>{const file=e.target.files?.[0];if(!file)return;try{importHypershort(await file.text());}catch(error){toast('HSL import: '+error.message);}e.target.value='';};
