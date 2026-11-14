@@ -284,7 +284,7 @@
   }
   function drawHouseRoom(scene,time){
     const room=scene.houseRoom||'hallway',walk=scene.cameraMotion==='walkthrough';
-    const step=walk?Math.sin(time*7)*5:0,depth=walk?Math.min(1,time/Math.max(1,scene.duration))*.09:0;
+    const step=walk?Math.sin(time*7)*5:0,depth=walk?Math.min(1,time/Math.max(1,scene.duration))*.28:0;
     const cx=640+step,cy=330+Math.sin(time*3)*2;
     const palettes={hallway:['#d9c8ad','#b58f70','#80634f'],living:['#eadcc7','#b98e6c','#80604c'],kitchen:['#dce7e6','#9baeb0','#718589'],bedroom:['#e8dce8','#b9a3b9','#856f87'],front:['#b6d9f3','#7aaf79','#527d55'],backyard:['#a9d9f3','#70b978','#4e8c52']};
     const p=palettes[room]||palettes.hallway;
@@ -306,7 +306,7 @@
       }
       return;
     }
-    const push=depth*180;
+    const push=depth*480;
     // Room shell in one-point perspective.
     housePolygon([[0,0],[1280,0],[cx+350+push,cy-35],[cx-350-push,cy-35]],'#f4e9da');
     housePolygon([[0,0],[cx-350-push,cy-35],[cx-350-push,590],[0,720]],'#d8c4aa');
