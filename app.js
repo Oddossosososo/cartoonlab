@@ -8,6 +8,49 @@
     character: { name: 'Bloop', color: '#ff9cba', expression: 'happy', x: 640, size: 1, speech: 'What if...?' },
     scenes: [{ name: 'Opening scene', duration: 6, background: 'sunset', title: 'WHAT IF...?', subtitle: 'A tiny idea. A BIG adventure.', motion: 'bounce' }]
   };
+  const PROJECT_KEY = 'cartoonlab-project-v1';
+  let saveTimer = null;
+  function projectSnapshot(){
+    return {version:1,title:state.title,character:state.character,scenes:state.scenes,selected:state.selected,elapsed:state.elapsed,vip:state.vip};
+  }
+  function saveProject(){
+    try{
+      localStorage.setItem(PROJECT_KEY,JSON.stringify(projectSnapshot()));
+      const label=document.querySelector('.saved-label');
+      if(label)label.textContent='Saved locally';
+    }catch(error){
+      const label=document.querySelector('.saved-label');
+      if(label)label.textContent='Save unavailable';
+      console.warn('CartoonLab could not save this project:',error);
+    }
+  }
+  function scheduleSave(){
+    const label=document.querySelector('.saved-label');
+    if(label)label.textContent='Saving…';
+    clearTimeout(saveTimer);
+    saveTimer=setTimeout(saveProject,350);
+  }
+  function restoreProject(){
+    try{
+      const raw=localStorage.getItem(PROJECT_KEY);
+      if(!raw)return;
+      const saved=JSON.parse(raw);
+      if(!saved || saved.version!==1 || !Array.isArray(saved.scenes) || !saved.scenes.length)return;
+      if(saved.character && typeof saved.character==='object')state.character={...state.character,...saved.character};
+      state.scenes=saved.scenes.filter(s=>s && typeof s==='object' && Number.isFinite(Number(s.duration)) && Number(s.duration)>0);
+      if(!state.scenes.length)state.scenes=[{name:'Opening scene',duration:6,background:'sunset',title:'WHAT IF...?',subtitle:'A tiny idea. A BIG adventure.',motion:'bounce'}];
+      state.title=typeof saved.title==='string' && saved.title ? saved.title : state.title;
+      state.selected=Math.max(0,Math.min(state.scenes.length-1,Number(saved.selected)||0));
+      state.elapsed=Math.max(0,Math.min(Number(saved.elapsed)||0,state.scenes.reduce((n,s)=>n+Number(s.duration||0),0)));
+      if(typeof saved.vip==='boolean')state.vip=saved.vip;
+      $('projectTitle').textContent=state.title;
+    }catch(error){console.warn('CartoonLab could not restore the saved project:',error);}
+  }
+  restoreProject();
+  document.addEventListener('input',scheduleSave);
+  document.addEventListener('change',scheduleSave);
+  document.addEventListener('click',scheduleSave);
+  window.addEventListener('beforeunload',saveProject);
   const backgrounds = {
     sunset: ['#261b46','#ef8a9c','#ffc58d'], sky: ['#1c3558','#6bb6e9','#c5eaff'],
     night: ['#101329','#30366d','#8377c6'], mint: ['#173d3a','#5eae98','#c1e7b4'],
