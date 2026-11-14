@@ -486,10 +486,10 @@
     // House walkthrough scenes keep their dedicated room artwork as the primary background.
     // The 3D landscape renderer is only used for ordinary scenes / fallback environments.
     const has3D=!!(window.CartoonLab3D&&window.CartoonLab3D.ready&&window.CartoonLab3D.render(state.elapsed,scene));
-    if(has3D&&window.CartoonLab3D.canvas)ctx.drawImage(window.CartoonLab3D.canvas,0,0,1280,720);
+    if(has3D&&window.CartoonLab3D.canvas&&(scene.layers?.background!==false))ctx.drawImage(window.CartoonLab3D.canvas,0,0,1280,720);
     const layers=scene.layers||{};\n    if(scene.houseRoom){if(layers.background!==false&&!has3D)drawHouseRoom(scene,state.elapsed);if(layers.character!==false)drawCharacter(studioCharacter(scene,activeTime.local),state.elapsed,scene);if(scene.title){ctx.save();ctx.textAlign='center';ctx.fillStyle='#fff';ctx.shadowColor='#0008';ctx.shadowBlur=12;ctx.font='800 42px Space Grotesk';ctx.fillText(scene.title,640,72);ctx.restore();}if(scene.subtitle){ctx.save();ctx.textAlign='center';ctx.fillStyle='#fff';ctx.font='500 20px DM Sans';ctx.fillText(scene.subtitle,640,108);ctx.restore();}}
     else if(layers.background!==false&&!has3D){const grad=ctx.createLinearGradient(0,0,0,720);grad.addColorStop(0,bg[0]);grad.addColorStop(.65,bg[1]);grad.addColorStop(1,bg[2]);ctx.fillStyle=grad;ctx.fillRect(0,0,1280,720);}
-    if(scene.houseRoom){drawCounter(scene,activeTime.local);return;}
+    if(scene.houseRoom){if(layers.counter!==false)drawCounter(scene,activeTime.local);return;}
     const t=state.elapsed, camera=scene.cameraMotion||'none';
     let zoom=1,panX=0,panY=0,shakeX=0,shakeY=0;
     if(camera==='zoom-in')zoom=1+((Math.sin(t*1.1)+1)/2)*.12;
