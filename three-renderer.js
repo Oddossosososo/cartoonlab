@@ -123,6 +123,109 @@ function addRoomObjects(palette,maps){
   path.rotation.x=-Math.PI/2;path.position.set(0,-2.22,1);path.userData.paletteRole='accent';roomGroup.add(path);
   orbGroup=null;
 }
+
+const housePalettes={
+  hallway:{wall:0xd9c8ad,side:0xc8b49a,floor:0x98765b,trim:0x78513e,accent:0xb45e62},
+  living:{wall:0xeadcc7,side:0xd7c2a8,floor:0x98765b,trim:0x76543e,accent:0x688c91},
+  kitchen:{wall:0xdce7e6,side:0xc4d4d2,floor:0x718589,trim:0x718b89,accent:0x8ba3a1},
+  bedroom:{wall:0xe8dce8,side:0xd4c3d5,floor:0x856f87,trim:0x8c6c87,accent:0xf4b8c9},
+  front:{wall:0xf0dfc7,side:0xe2c9aa,floor:0x70a968,trim:0x704f48,accent:0xa7d9e8},
+  backyard:{wall:0xf0dfc7,side:0xe2c9aa,floor:0x70b978,trim:0x8d654b,accent:0x4d9959}
+};
+let houseGroup=null,lastHouseRoom='';
+function houseMaterial(color,roughness=.88){return new THREE.MeshStandardMaterial({color,roughness,metalness:0});}
+function houseBox(parent,w,h,d,x,y,z,color,roughness=.88){
+  const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),houseMaterial(color,roughness));
+  mesh.position.set(x,y,z);parent.add(mesh);return mesh;
+}
+function housePlane(parent,w,h,x,y,z,color){
+  const mesh=new THREE.Mesh(new THREE.PlaneGeometry(w,h),new THREE.MeshStandardMaterial({color,roughness:.96,side:THREE.DoubleSide}));
+  mesh.position.set(x,y,z);parent.add(mesh);return mesh;
+}
+function addHouseWindow(parent,x,y,z,color){
+  houseBox(parent,3.05,2.35,.18,x,y,z,color,.35);
+  houseBox(parent,2.72,2.02,.08,x,y,z+.12,0x9ed2e5,.25);
+  houseBox(parent,.09,2.1,.12,x,y,z+.19,0xffffff,.4);
+  houseBox(parent,2.8,.09,.12,x,y,z+.19,0xffffff,.4);
+  houseBox(parent,.07,2.05,.12,x,y,z+.2,0xffffff,.4);
+}
+function buildHouseRoom(room){
+  if(houseGroup){scene.remove(houseGroup);houseGroup.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material){if(Array.isArray(o.material))o.material.forEach(m=>m.dispose());else o.material.dispose();}});}
+  houseGroup=new THREE.Group();scene.add(houseGroup);lastHouseRoom=room;
+  const p=housePalettes[room]||housePalettes.hallway;
+  if(room==='front'||room==='backyard'){
+    housePlane(houseGroup,200,100,0,18,-42,0x8ec9f0);
+    housePlane(houseGroup,200,100,0,-3,-28,p.floor);
+    for(let i=0;i<8;i++){
+      const x=-15+i*4.3;
+      const trunk=houseBox(houseGroup,.38,2.2,.38,x,-1.1,-10-(i%3)*2,0x76513d);
+      const crown=new THREE.Mesh(new THREE.SphereGeometry(1.25,10,8),houseMaterial(0x39784d));
+      crown.position.set(x,.8,-10-(i%3)*2);crown.scale.y=1.1;houseGroup.add(crown);
+    }
+    if(room==='front'){
+      const roof=new THREE.Mesh(new THREE.ConeGeometry(8.4,4.7,4),houseMaterial(p.trim));
+      roof.rotation.y=Math.PI/4;roof.position.set(0,5,-12);houseGroup.add(roof);
+      houseBox(houseGroup,13,7,.8,0,1.1,-12,p.wall);
+      houseBox(houseGroup,2.2,4,.3,1,-.4,-11.45,0x98765b);
+      addHouseWindow(houseGroup,-4,1.1,-11.4,p.accent);addHouseWindow(houseGroup,4,1.1,-11.4,p.accent);
+      houseBox(houseGroup,4,.16,18,0,-2.05,-2,0xc4a27d);
+    }else{
+      houseBox(houseGroup,18,.45,.7,0,-.2,-3,p.trim);
+      for(let i=0;i<5;i++){
+        const shrub=new THREE.Mesh(new THREE.SphereGeometry(1.15,10,8),houseMaterial(p.accent));
+        shrub.position.set(-8+i*4,0,-7-(i%2));houseGroup.add(shrub);
+      }
+    }
+    return;
+  }
+  // A complete 3D room shell: floor, ceiling, side walls and back wall.
+  houseBox(houseGroup,19,.28,22,0,-2.35,0,p.floor);
+  houseBox(houseGroup,19,.22,22,0,7.05,0,p.side);
+  houseBox(houseGroup,.25,9.2,22,-9.45,2.3,0,p.side);
+  houseBox(houseGroup,.25,9.2,22,9.45,2.3,0,p.side);
+  houseBox(houseGroup,19,9.2,.28,0,2.3,-10.9,p.wall);
+  // Skirting boards and ceiling trim.
+  houseBox(houseGroup,18.8,.22,.18,0,-1.8,-10.68,p.trim);
+  houseBox(houseGroup,.18,.22,21,-9.28,-1.8,0,p.trim);
+  houseBox(houseGroup,.18,.22,21,9.28,-1.8,0,p.trim);
+  // Back-wall doorway with a visible open passage and wooden frame.
+  houseBox(houseGroup,2.6,5.2,.22,0,.25,-10.65,p.trim);
+  houseBox(houseGroup,2.18,4.85,.08,0,.2,-10.48,0x3d3440);
+  houseBox(houseGroup,.1,4.9,.15,-1.18,.2,-10.35,0xd5b18a);
+  houseBox(houseGroup,.1,4.9,.15,1.18,.2,-10.35,0xd5b18a);
+  houseBox(houseGroup,2.45,.12,.15,0,2.72,-10.35,0xd5b18a);
+  addHouseWindow(houseGroup,-5,3.8,-10.68,p.accent);
+  // Ceiling light and soft practical lighting.
+  houseBox(houseGroup,.12,2.1,.12,0,5.95,-2,0x8d745e);
+  const lamp=new THREE.Mesh(new THREE.SphereGeometry(.48,16,10),new THREE.MeshStandardMaterial({color:0xffe8a3,emissive:0xffd77a,emissiveIntensity:.65,roughness:.25}));
+  lamp.scale.y=.35;lamp.position.set(0,4.9,-2);houseGroup.add(lamp);
+  const roomLight=new THREE.PointLight(0xffe5c1,24,24,2);roomLight.position.set(0,4.5,-1);houseGroup.add(roomLight);
+  if(room==='living'){
+    houseBox(houseGroup,6.1,1.7,2.1,-4,-.55,-1,0x688c91);
+    houseBox(houseGroup,5.2,1.35,1.5,-4,.65,-1.25,0x8eb2b3);
+    houseBox(houseGroup,4.6,.22,2.5,1,-1.05,-1,0x76543e);
+    houseBox(houseGroup,.2,1.1,.2,-.9,-1.7,-.2,0x76543e);houseBox(houseGroup,.2,1.1,.2,2.9,-1.7,-.2,0x76543e);
+    const vase=new THREE.Mesh(new THREE.SphereGeometry(.42,12,10),houseMaterial(0xd9b36f));vase.position.set(1,-.55,-1);houseGroup.add(vase);
+  }else if(room==='kitchen'){
+    houseBox(houseGroup,15,1.7,1.5,0,-.55,-1.8,0xf5f0e7);
+    houseBox(houseGroup,15,.18,1.7,0,.4,-1.8,0x8ba3a1);
+    for(let i=0;i<5;i++){houseBox(houseGroup,2.5,2.3,.8,-6+i*3,3.05,-9.9,0xd8e2df);houseBox(houseGroup,2.35,2.1,.12,-6+i*3,3.05,-9.42,0xb8d2d0);}
+    houseBox(houseGroup,2.4,.18,1.3,0,.55,-1.7,0x454b50);
+    houseBox(houseGroup,3.2,1.2,1.3,5,-.85,-1.8,0xc4d5d1);
+  }else if(room==='bedroom'){
+    houseBox(houseGroup,10,1.5,4.2,0,-.55,-1.9,0x6c7898);
+    houseBox(houseGroup,9.4,.65,3.8,0,.4,-2.05,0xd8d7e6);
+    houseBox(houseGroup,3.1,.35,2.2,-3,.85,-2.1,0xf4b8c9);houseBox(houseGroup,3.1,.35,2.2,3,.85,-2.1,0xf4b8c9);
+  }else{
+    // Hallway runner and framed wall art.
+    houseBox(houseGroup,4,.035,15,0,-2.18,-.3,0xb45e62);
+    houseBox(houseGroup,2.4,2.7,.15,-7,2.7,-3,0xc99d69);
+    houseBox(houseGroup,2.05,2.35,.08,-7,2.7,-2.88,0x8eb4a5);
+    houseBox(houseGroup,2.4,2.7,.15,7,2.7,-3,0xc99d69);
+    houseBox(houseGroup,2.05,2.35,.08,7,2.7,-2.88,0xd7b2a2);
+  }
+}
+
 function setupPostProcessing(){
   // Lightweight default stack: bloom only. SSAO and bokeh were the main frame-time cost.
   composer=new EffectComposer(renderer);
@@ -184,14 +287,22 @@ function render(time,sceneData={}){
   const sceneName=sceneData.background||'sunset';
   if(sceneName!==lastScene){setPalette(sceneName);lastScene=sceneName;}
   const t=Number(time)||0;
+  const houseRoom=sceneData.houseRoom||'';
+  if(houseRoom){
+    if(houseRoom!==lastHouseRoom)buildHouseRoom(houseRoom);
+    camera.position.set(Math.sin(t*.16)*.22,2.5+Math.sin(t*.23)*.08,12.8-(sceneData.cameraMotion==='walkthrough'?Math.min(1,t/Math.max(1,Number(sceneData.duration)||3))*.9:0));
+    camera.lookAt(Math.sin(t*.16)*.12,1.1,-3.1);
+  }else{
+    camera.position.x=Math.sin(t*.16)*.24;
+    camera.position.y=3.2+Math.sin(t*.23)*.12;
+    camera.position.z=13;
+    camera.lookAt(0,0,-2);
+  }
   roomGroup?.children.forEach(obj=>{
     if(obj.userData?.baseX!==undefined)obj.position.x=obj.userData.baseX+Math.sin(t*.12+obj.userData.phase)*.18;
   });
-  camera.position.x=Math.sin(t*.16)*.24;
-  camera.position.y=3.2+Math.sin(t*.23)*.12;
-  camera.lookAt(0,0,-2);
   if(grainPass)grainPass.uniforms.uTime.value=t;
-  if(composer)composer.render();
+  if(composer&&!houseRoom)composer.render();
   else renderer.render(scene,camera);
   const glCanvas=renderer.domElement;
   const out=renderCanvas.getContext('2d');
