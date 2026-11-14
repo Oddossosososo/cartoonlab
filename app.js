@@ -52,9 +52,15 @@
     ctx.strokeStyle=c.color;ctx.lineWidth=25*c.size;ctx.lineCap='round';ctx.beginPath();
     if(c.expression==='curious'){
       ctx.moveTo(-r*.7,8);ctx.quadraticCurveTo(-r*1.12,28+bob*.3,-r*1.12,58);
-      ctx.moveTo(r*.7,8);ctx.quadraticCurveTo(r*.95,r*.62,r*.43,r*.63);
+      // Bent arm raised clearly toward the chin
+      ctx.moveTo(r*.7,r*.18);ctx.bezierCurveTo(r*1.02,r*.38,r*.78,r*.66,r*.48,r*.43);
       ctx.stroke();
-      ctx.fillStyle=c.color;ctx.beginPath();ctx.arc(r*.38,r*.57,r*.15,0,Math.PI*2);ctx.fill();
+      // Open mitten-like hand with visible fingers beside the chin
+      ctx.fillStyle=c.color;ctx.beginPath();ctx.arc(r*.39,r*.34,r*.145,0,Math.PI*2);ctx.fill();
+      ctx.beginPath();ctx.moveTo(r*.32,r*.25);ctx.quadraticCurveTo(r*.24,r*.15,r*.31,r*.12);
+      ctx.moveTo(r*.39,r*.22);ctx.quadraticCurveTo(r*.36,r*.08,r*.44,r*.09);
+      ctx.moveTo(r*.46,r*.24);ctx.quadraticCurveTo(r*.51,r*.13,r*.57,r*.17);
+      ctx.strokeStyle=c.color;ctx.lineWidth=15*c.size;ctx.lineCap='round';ctx.stroke();
     } else {
       ctx.moveTo(-r*.7,5);ctx.quadraticCurveTo(-r*1.15,25+bob*.3,-r*1.12,55);ctx.moveTo(r*.7,5);ctx.quadraticCurveTo(r*1.1,-25-bob*.3,r*1.08,-60);ctx.stroke();
     }
