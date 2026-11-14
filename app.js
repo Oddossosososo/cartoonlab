@@ -1053,9 +1053,10 @@ bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedSc
       toast('Imported complete HSL project · '+scenes.length+' scene(s)');
       return;
     }
-    const scenes=[];let current=null,years=null;
+    const scenes=[];let current=null,years=null,importedTitle='Hypershort video';
     for(const line of lines){
       if(line.startsWith('!cartoonlab '))continue;
+      if(line.startsWith('!title ')){const raw=line.slice(7).trim();try{importedTitle=JSON.parse(raw);}catch(error){importedTitle=raw;}continue;}
       if(line.startsWith('!voice ')){const voice=line.slice(7).trim();if(!/^[a-z0-9_]+$/i.test(voice))throw new Error('Bad voice name: '+voice);state.voiceName=voice;continue;}
       if(line.startsWith('!tts ')){const raw=line.slice(5).trim();try{state.character.ttsText=JSON.parse(raw);}catch(error){state.character.ttsText=raw;}continue;}
       if(line[0]==='@'){
@@ -1076,7 +1077,7 @@ bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedSc
     }
     if(!scenes.length)throw new Error('No scenes found. Start with @duration background');
     if(years)scenes.forEach(scene=>{scene.counterEnabled=true;scene.counterMode='years';scene.counterStart=years.start;scene.counterEnd=years.end;scene.counterCorner='top-right';});
-    checkpoint();state.scenes=scenes;state.selected=0;state.elapsed=0;state.title='Hypershort video';
+    checkpoint();state.scenes=scenes;state.selected=0;state.elapsed=0;state.title=importedTitle;
     $('projectTitle').textContent=state.title;renderTimeline();renderInspector();draw();updateClock();saveProject();
     toast('Imported '+scenes.length+' scene(s) from HSL');
   }
