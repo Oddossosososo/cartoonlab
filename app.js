@@ -655,9 +655,9 @@
     } else {
       html='<div class="inspector-section"><div class="section-title">AUDIO & VOICE</div><p class="muted-copy">Add your own narration or music track. Audio stays in this browser session.</p>'+
       '<button class="full-button" id="uploadAudio">＋ Import audio file</button>'+
-      (state.audioName?'<p class="muted-copy">♫ '+escapeHtml(state.audioName)+'</p>':'')+
+      (state.audioName?'<p class="muted-copy">♫ Tracks: '+escapeHtml(state.audioName)+'</p>':'')+
       '<label class="field"><span>Sound effects</span><div class="choice-row"><button class="choice" data-sound="pop">Pop</button><button class="choice" data-sound="boing">Boing</button><button class="choice" data-sound="sparkle">Sparkle</button></div></label>'+
-      '<p class="muted-copy">Imported audio can be previewed while editing. Video export currently records the animation preview; audio mixing is not included yet.</p></div>';
+      '<p class="muted-copy">Import multiple audio files. Studio exports mix imported tracks into WebM or supported MP4 exports.</p></div>';
     }
     $('inspectorContent').innerHTML=html;bindInspector();if(tab==='studio')bindStudio();
   }
