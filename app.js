@@ -4,7 +4,7 @@
   const $ = (id) => document.getElementById(id);
   const state = {
     title: 'Untitled story', tab: 'characters', selected: 0, playing: false, vip: localStorage.getItem('cartoonlab-vip') === 'true',
-    elapsed: 0, lastFrame: 0, audioUrl: null, audioName: '', lipSync: { active:false, startedAt:0, utterance:null },
+    elapsed: 0, lastFrame: 0, audioUrl: null, audioName: '', kokoro: null, kokoroLoading: false, voiceBuffer: null, voiceText: '', voiceName: 'af_heart', audioContext: null, voiceSource: null, analyser: null, analyserData: null, lipSync: { active:false, startedAt:0, utterance:null },
     character: { name: 'Bloop', color: '#ff9cba', expression: 'happy', x: 640, size: 1, speech: 'What if...?' },
     scenes: [{ name: 'Opening scene', duration: 3, background: 'sunset', title: 'WHAT IF...?', subtitle: 'A tiny idea. A BIG adventure.', motion: 'bounce' }]
   };
@@ -104,32 +104,68 @@
   };
   function toast(message){const el=$('toast');el.textContent=message;el.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.remove('show'),2200);}
   function mouthAmount(){
-    const lip=state.lipSync;
-    if(!lip.active)return 0;
-    const t=(performance.now()-lip.startedAt)/1000;
-    const phase=(t*7.4)%1;
-    return Math.min(1,Math.max(0,Math.sin(phase*Math.PI))*(.5+.5*Math.sin(t*13.1+Math.sin(t*4.2))));
+    if(!state.lipSync.active)return 0;
+    if(state.analyser && state.analyserData){
+      state.analyser.getByteTimeDomainData(state.analyserData);
+      let sum=0;for(let i=0;i<state.analyserData.length;i++){const v=(state.analyserData[i]-128)/128;sum+=v*v;}
+      const rms=Math.sqrt(sum/state.analyserData.length);
+      return Math.min(1,Math.max(0,(rms-.012)*13));
+    }
+    return 0;
+  }
+  async function loadKokoro(){
+    if(state.kokoro)return state.kokoro;
+    if(state.kokoroLoading)throw new Error('Voice model is already loading. Please wait.');
+    state.kokoroLoading=true;toast('Loading Kokoro voice engine… (first download is about 80 MB)');
+    try{
+      const {KokoroTTS}=await import('https://esm.sh/kokoro-js@1.2.1');
+      const model=await KokoroTTS.from_pretrained('onnx-community/Kokoro-82M-v1.0-ONNX',{dtype:'q8',device:'wasm'});
+      state.kokoro=model;toast('Kokoro voice engine ready');return model;
+    } finally {state.kokoroLoading=false;}
+  }
+  function audioContext(){
+    const AC=window.AudioContext||window.webkitAudioContext;
+    if(!AC)throw new Error('Web Audio is not supported in this browser.');
+    if(!state.audioContext)state.audioContext=new AC();
+    return state.audioContext;
+  }
+  async function generateVoice(){
+    const text=String(state.character.speech||'').trim();
+    if(!text){toast('Add dialogue first');return null;}
+    if(state.voiceBuffer && state.voiceText===text && state.voiceName===state.voiceName)return state.voiceBuffer;
+    const model=await loadKokoro();
+    const result=await model.generate(text,{voice:state.voiceName});
+    const ac=audioContext();
+    const samples=result.audio instanceof Float32Array?result.audio:new Float32Array(result.audio);
+    const buffer=ac.createBuffer(1,samples.length,result.sampling_rate||24000);
+    buffer.copyToChannel(samples,0);
+    state.voiceBuffer=buffer;state.voiceText=text;
+    return buffer;
+  }
+  function playVoiceBuffer(buffer){
+    const ac=audioContext();if(ac.state==='suspended')ac.resume();
+    if(state.voiceSource){try{state.voiceSource.stop();}catch(e){}}
+    const source=ac.createBufferSource();source.buffer=buffer;
+    const analyser=ac.createAnalyser();analyser.fftSize=256;
+    const output=ac.createGain();output.gain.value=.95;
+    source.connect(analyser);analyser.connect(output);output.connect(ac.destination);
+    state.analyser=analyser;state.analyserData=new Uint8Array(analyser.fftSize);
+    state.voiceSource=source;state.lipSync.active=true;
+    const button=$('speakDialogue');if(button)button.textContent='Ⅱ Stop speech';
+    source.onended=()=>{if(state.voiceSource===source){state.lipSync.active=false;state.voiceSource=null;state.analyser=null;state.analyserData=null;const b=$('speakDialogue');if(b)b.textContent='▶ Generate + speak';}};
+    source.start();return source;
   }
   function stopLipSync(){
+    if(state.voiceSource){try{state.voiceSource.stop();}catch(e){}state.voiceSource=null;}
     if(state.lipSync.utterance){try{speechSynthesis.cancel();}catch(e){}}
-    state.lipSync.active=false;
-    const button=$('speakDialogue');if(button)button.textContent='▶ Speak + lip-sync';
+    state.lipSync.active=false;state.analyser=null;state.analyserData=null;
+    const button=$('speakDialogue');if(button)button.textContent='▶ Generate + speak';
   }
-  function startLipSync(){
-    const text=String(state.character.speech||'').trim();
-    if(!text){toast('Add dialogue first');return;}
-    if(!('speechSynthesis' in window) || !('SpeechSynthesisUtterance' in window)){toast('Speech playback is not supported in this browser');return;}
-    stopLipSync();
-    const utterance=new SpeechSynthesisUtterance(text);
-    utterance.rate=1;utterance.pitch=1;
-    utterance.onstart=()=>{state.lipSync.active=true;state.lipSync.startedAt=performance.now();const b=$('speakDialogue');if(b)b.textContent='Ⅱ Stop speech';};
-    utterance.onboundary=()=>{state.lipSync.active=true;state.lipSync.startedAt=performance.now()-80;};
-    utterance.onpause=()=>{state.lipSync.active=false;};
-    utterance.onresume=()=>{state.lipSync.active=true;state.lipSync.startedAt=performance.now();};
-    utterance.onend=()=>{state.lipSync.active=false;state.lipSync.utterance=null;const b=$('speakDialogue');if(b)b.textContent='▶ Speak + lip-sync';};
-    utterance.onerror=()=>{state.lipSync.active=false;state.lipSync.utterance=null;const b=$('speakDialogue');if(b)b.textContent='▶ Speak + lip-sync';toast('Speech playback could not start');};
-    state.lipSync.utterance=utterance;
-    speechSynthesis.speak(utterance);
+  async function startLipSync(){
+    const button=$('speakDialogue');if(button){button.disabled=true;button.textContent='Loading voice…';}
+    try{stopLipSync();const buffer=await generateVoice();if(buffer)playVoiceBuffer(buffer);}
+    catch(error){console.error('Kokoro TTS:',error);toast('Voice failed: '+(error.message||'check your connection'));if(button)button.textContent='▶ Generate + speak';}
+    finally{if(button)button.disabled=false;}
   }
   function drawCharacter(c, time, scene){
     const bob = scene.motion==='bounce' ? Math.sin(time*5)*15 : scene.motion==='float' ? Math.sin(time*2.2)*24 : 0;
@@ -278,7 +314,7 @@
     const tab=state.tab, c=state.character, s=selectedScene();document.querySelectorAll('.inspector-tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
     let html='';
     if(tab==='characters'){
-      html='<div class="inspector-section"><div class="section-title">MAIN CHARACTER</div>'+field('Character name','charName',c.name)+field('Speech bubble text','speechText',c.speech)+'<button class="full-button" id="speakDialogue">▶ Speak + lip-sync</button><p class="muted-copy">Reads your dialogue aloud and animates the mouth automatically.</p></div>'+
+      html='<div class="inspector-section"><div class="section-title">MAIN CHARACTER</div>'+field('Character name','charName',c.name)+field('Speech bubble text','speechText',c.speech)+'<label class="field"><span>Storytelling voice</span><select id="voiceChoice"><option value="af_heart">Heart · warm narrator</option><option value="af_bella">Bella · bright</option><option value="af_nicole">Nicole · gentle</option><option value="am_adam">Adam · deeper</option><option value="am_michael">Michael · friendly</option><option value="bf_emma">Emma · British</option><option value="bm_george">George · British deep</option></select></label><button class="full-button" id="speakDialogue">▶ Generate + speak</button><p class="muted-copy">Kokoro AI voice runs on this device. First use downloads the model (about 80 MB); later uses are cached. Mouth movement follows the audio volume.</p></div>'+
       '<div class="inspector-section"><div class="section-title">LOOK & FEEL</div>'+field('Character colour','charColor',c.color,'color')+
       '<label class="field"><span>Expression</span><div class="choice-row">'+['happy','surprised','curious','sad','angry','neutral'].map(x=>'<button class="choice '+(c.expression===x?'active':'')+'" data-expression="'+x+'">'+x[0].toUpperCase()+x.slice(1)+'</button>').join('')+'</div></label>'+
       '<label class="field"><span>Character size</span><input id="charSize" type="range" min=".65" max="1.35" step=".05" value="'+c.size+'"></label>'+
@@ -306,6 +342,7 @@
     bind('sceneName',v=>selectedScene().name=v);bind('sceneBg',v=>selectedScene().background=v,'change');bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedScene().subtitle=v);bind('sceneMotion',v=>selectedScene().motion=v,'change');
     bind('sceneDuration',v=>{selectedScene().duration=+v;renderTimeline();updateClock();});
     if($('speakDialogue'))$('speakDialogue').onclick=()=>state.lipSync.active?stopLipSync():startLipSync();
+    if($('voiceChoice')){$('voiceChoice').value=state.voiceName;$('voiceChoice').onchange=e=>{state.voiceName=e.target.value;state.voiceBuffer=null;state.voiceText='';};}
     document.querySelectorAll('[data-expression]').forEach(b=>b.onclick=()=>{state.character.expression=b.dataset.expression;renderInspector();});
     if($('duplicateScene'))$('duplicateScene').onclick=()=>{const copy={...selectedScene(),name:selectedScene().name+' copy'};state.scenes.splice(state.selected+1,0,copy);state.selected++;renderTimeline();renderInspector();toast('Scene duplicated');};
     if($('deleteScene'))$('deleteScene').onclick=()=>{if(state.scenes.length===1){toast('Keep at least one scene');return;}state.scenes.splice(state.selected,1);state.selected=Math.max(0,state.selected-1);state.elapsed=0;renderTimeline();renderInspector();};
@@ -333,8 +370,17 @@
   $('exportVideo').onclick=()=>{
     if(!canvas.captureStream||!window.MediaRecorder){toast('Video recording is not supported in this browser');return;}
     state.playing=false;state.elapsed=0;$('playButton').textContent='▶';
-    const stream=canvas.captureStream(30);let mime='video/webm;codecs=vp9';if(!MediaRecorder.isTypeSupported(mime))mime='video/webm';
-    const recorder=new MediaRecorder(stream,{mimeType:mime});const chunks=[];recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};recorder.onstop=()=>{const blob=new Blob(chunks,{type:mime});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=(state.title||'cartoonlab-story').replace(/[^a-z0-9-_]+/gi,'-')+'.webm';a.click();URL.revokeObjectURL(url);state.playing=false;state.elapsed=0;$('playButton').textContent='▶';toast('Your video is ready!');};recorder.start();state.playing=true;$('playButton').textContent='Ⅱ';toast('Recording your animation…');setTimeout(()=>{if(recorder.state!=='inactive')recorder.stop();},totalDuration()*1000);
+    let stream=canvas.captureStream(30), audioDestination=null;
+    try{
+      if(state.voiceBuffer){
+        const ac=audioContext();if(ac.state==='suspended')await ac.resume();
+        audioDestination=ac.createMediaStreamDestination();
+        const source=ac.createBufferSource();source.buffer=state.voiceBuffer;source.connect(audioDestination);source.start();
+        audioDestination.stream.getAudioTracks().forEach(track=>stream.addTrack(track));
+      }
+    }catch(error){console.warn('Audio export setup failed:',error);}
+    let mime='video/webm;codecs=vp9,opus';if(!MediaRecorder.isTypeSupported(mime))mime='video/webm';
+    const recorder=new MediaRecorder(stream,{mimeType:mime});const chunks=[];recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};recorder.onstop=()=>{const blob=new Blob(chunks,{type:mime});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=(state.title||'cartoonlab-story').replace(/[^a-z0-9-_]+/gi,'-')+'.webm';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);stream.getTracks().forEach(track=>track.stop());state.playing=false;state.elapsed=0;$('playButton').textContent='▶';toast(state.voiceBuffer?'Video exported with voice audio!':'Video ready (generate dialogue first to include voice audio).');};recorder.start();state.playing=true;$('playButton').textContent='Ⅱ';toast(state.voiceBuffer?'Recording animation + voice…':'Recording animation…');setTimeout(()=>{if(recorder.state!=='inactive')recorder.stop();},totalDuration()*1000);
   };
   renderTimeline();renderInspector();requestAnimationFrame(frame);
 })();
