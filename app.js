@@ -217,13 +217,16 @@
     finally{if(button)button.disabled=false;}
   }
   function drawCharacter(c, time, scene){
-    const bob = scene.motion==='bounce' ? Math.sin(time*5)*15 : scene.motion==='float' ? Math.sin(time*2.2)*24 : 0;
-    const x=c.x, y=475+bob, r=112*c.size;
+    const movement=scene.characterMotion||({bounce:'bounce',float:'float',still:'idle'}[scene.motion]||'bounce');
+    const cycle=time*(movement==='run'?10:movement==='walk'?5:3.5);
+    const bob=movement==='bounce'?Math.abs(Math.sin(time*5))*22:movement==='float'?Math.sin(time*2.2)*24:movement==='jump'?Math.abs(Math.sin(time*2.8))*105:movement==='walk'?Math.abs(Math.sin(cycle))*7:movement==='run'?Math.abs(Math.sin(cycle))*13:movement==='wave'?Math.sin(time*3)*5:0;
+    const stride=movement==='walk'?Math.sin(cycle)*22:movement==='run'?Math.sin(cycle)*39:0;
+    const x=c.x+(movement==='walk'?Math.sin(time*2.5)*42:movement==='run'?Math.sin(time*4)*72:0), y=475-bob, r=112*c.size;
     ctx.save();ctx.translate(x,y);
     // soft ground shadow
     ctx.fillStyle='#100e1c55';ctx.beginPath();ctx.ellipse(0,105*c.size,105*c.size,19*c.size,0,0,Math.PI*2);ctx.fill();
     // feet
-    ctx.fillStyle='#30233a';ctx.beginPath();ctx.ellipse(-43*c.size,87*c.size,32*c.size,17*c.size,.15,0,Math.PI*2);ctx.ellipse(43*c.size,87*c.size,32*c.size,17*c.size,-.15,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#30233a';ctx.beginPath();ctx.ellipse((-43+stride)*c.size,87*c.size,32*c.size,17*c.size,.15,0,Math.PI*2);ctx.ellipse((43-stride)*c.size,87*c.size,32*c.size,17*c.size,-.15,0,Math.PI*2);ctx.fill();
     // body
     ctx.fillStyle=c.color;ctx.beginPath();ctx.ellipse(0,0,r*.95,r*1.02,0,0,Math.PI*2);ctx.fill();
     ctx.fillStyle='#ffffff24';ctx.beginPath();ctx.ellipse(-r*.28,-r*.43,r*.23,r*.35,-.5,0,Math.PI*2);ctx.fill();
@@ -248,7 +251,7 @@
     // arms
     ctx.strokeStyle=c.color;ctx.lineWidth=25*c.size;ctx.lineCap='round';ctx.beginPath();
     if(c.expression==='curious'){
-      ctx.moveTo(-r*.7,8);ctx.quadraticCurveTo(-r*1.12,28+bob*.3,-r*1.12,58);
+      ctx.moveTo(-r*.7,8);ctx.quadraticCurveTo(-r*1.12,28,-r*1.12,58);
       // Bent arm raised clearly toward the chin
       ctx.moveTo(r*.7,r*.18);ctx.bezierCurveTo(r*1.02,r*.38,r*.78,r*.66,r*.48,r*.43);
       ctx.stroke();
@@ -258,8 +261,15 @@
       ctx.moveTo(r*.39,r*.22);ctx.quadraticCurveTo(r*.36,r*.08,r*.44,r*.09);
       ctx.moveTo(r*.46,r*.24);ctx.quadraticCurveTo(r*.51,r*.13,r*.57,r*.17);
       ctx.strokeStyle=c.color;ctx.lineWidth=15*c.size;ctx.lineCap='round';ctx.stroke();
+    } else if(movement==='wave'){
+      const wave=Math.sin(time*8)*.48;
+      ctx.moveTo(-r*.7,5);ctx.quadraticCurveTo(-r*1.15,25,-r*1.12,55);
+      ctx.moveTo(r*.7,5);ctx.lineTo(r*.98,-r*.42);ctx.stroke();
+      ctx.save();ctx.translate(r*.98,-r*.42);ctx.rotate(wave);ctx.strokeStyle=c.color;ctx.lineWidth=22*c.size;ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(r*.12,-r*.48);ctx.stroke();ctx.fillStyle=c.color;ctx.beginPath();ctx.arc(r*.12,-r*.49,r*.13,0,Math.PI*2);ctx.fill();ctx.restore();
     } else {
-      ctx.moveTo(-r*.7,5);ctx.quadraticCurveTo(-r*1.15,25+bob*.3,-r*1.12,55);ctx.moveTo(r*.7,5);ctx.quadraticCurveTo(r*1.1,-25-bob*.3,r*1.08,-60);ctx.stroke();
+      const swing=(movement==='walk'||movement==='run')?Math.sin(cycle)*.5:0;
+      ctx.save();ctx.rotate(-swing*.28);ctx.moveTo(-r*.7,5);ctx.quadraticCurveTo(-r*1.15,25,-r*1.12,55);ctx.stroke();ctx.restore();
+      ctx.save();ctx.rotate(swing*.28);ctx.moveTo(r*.7,5);ctx.quadraticCurveTo(r*1.1,-25,r*1.08,-60);ctx.stroke();ctx.restore();
     }
     if(c.expression==='curious'){
       ctx.save();ctx.textAlign='center';ctx.font='800 76px Space Grotesk';ctx.lineWidth=8;ctx.strokeStyle='#38243d';ctx.strokeText('?',r*.82,-r*1.08);ctx.fillStyle='#fff';ctx.fillText('?',r*.82,-r*1.08);ctx.restore();
@@ -271,12 +281,34 @@
   function draw(){
     const scene=selectedScene(), bg=backgrounds[scene.background]||backgrounds.sunset;
     const grad=ctx.createLinearGradient(0,0,0,720);grad.addColorStop(0,bg[0]);grad.addColorStop(.65,bg[1]);grad.addColorStop(1,bg[2]);ctx.fillStyle=grad;ctx.fillRect(0,0,1280,720);
-    // decorative stars / confetti
+    const t=state.elapsed, camera=scene.cameraMotion||'none';
+    let zoom=1,panX=0,panY=0,shakeX=0,shakeY=0;
+    if(camera==='zoom-in')zoom=1+((Math.sin(t*1.1)+1)/2)*.12;
+    if(camera==='zoom-out')zoom=1.12-((Math.sin(t*1.1)+1)/2)*.12;
+    if(camera==='pan-left')panX=-Math.sin(t*.8)*90;
+    if(camera==='pan-right')panX=Math.sin(t*.8)*90;
+    if(camera==='pan-up')panY=-Math.sin(t*.8)*65;
+    if(camera==='shake'){shakeX=(Math.random()-.5)*9;shakeY=(Math.random()-.5)*9;}
+    ctx.save();ctx.translate(640+panX+shakeX,360+panY+shakeY);ctx.scale(zoom,zoom);ctx.translate(-640,-360);
+    // Decorative stars and animated scene props.
     for(let i=0;i<34;i++){const x=(i*197+73)%1280,y=(i*113+39)%490;ctx.fillStyle='#ffffff'+(i%3?'35':'65');ctx.beginPath();ctx.arc(x,y,(i%3)+1.5,0,Math.PI*2);ctx.fill();}
+    const props=scene.objectMotion||'sparkles';
+    for(let i=0;i<6;i++){
+      const phase=t*(props==='fast'?2.1:props==='orbit'?1.15:.65)+i*1.047;
+      const px=props==='orbit'?640+Math.cos(phase)*430:(i*211+110)%1280;
+      const py=props==='rise'?700-((t*65+i*137)%780):props==='orbit'?350+Math.sin(phase)*205:((i*127+60)%520)+Math.sin(phase)*24;
+      if(props!=='none'){
+        ctx.save();ctx.translate(px,py);ctx.rotate(phase*.3);ctx.fillStyle=props==='bubbles'?'#ffffff55':'#fff8';
+        if(props==='bubbles'){ctx.beginPath();ctx.arc(0,0,8+(i%3)*4,0,Math.PI*2);ctx.strokeStyle='#ffffff99';ctx.lineWidth=2;ctx.stroke();}
+        else{ctx.font='22px sans-serif';ctx.fillText(props==='hearts'?'♥':'✦',0,0);}
+        ctx.restore();
+      }
+    }
     ctx.fillStyle='#ffffff13';ctx.beginPath();ctx.ellipse(640,660,560,65,0,0,Math.PI*2);ctx.fill();
     if(scene.title){ctx.textAlign='center';ctx.fillStyle='#fff';ctx.shadowColor='#241a3a88';ctx.shadowBlur=20;ctx.font='800 62px Space Grotesk';ctx.fillText(scene.title,640,100);ctx.shadowBlur=0;}
     if(scene.subtitle){ctx.textAlign='center';ctx.fillStyle='#fff';ctx.globalAlpha=.85;ctx.font='500 22px DM Sans';ctx.fillText(scene.subtitle,640,137);ctx.globalAlpha=1;}
     drawCharacter(state.character,state.elapsed,scene);
+    ctx.restore();
     if(!state.vip){ctx.textAlign='left';ctx.fillStyle='#ffffff88';ctx.font='600 13px DM Sans';ctx.fillText('CARTOONLAB',35,680);}
   }
   function updateClock(){
@@ -373,7 +405,10 @@
       html='<div class="inspector-section"><div class="section-title">SCENE SETTINGS</div>'+field('Scene name','sceneName',s.name)+
       '<label class="field"><span>Background</span><select id="sceneBg">'+Object.keys(backgrounds).map(k=>'<option value="'+k+'" '+(s.background===k?'selected':'')+'>'+k[0].toUpperCase()+k.slice(1)+'</option>').join('')+'</select></label>'+
       field('Main title','sceneTitle',s.title)+field('Subtitle','sceneSubtitle',s.subtitle)+
-      '<label class="field"><span>Animation style</span><select id="sceneMotion"><option value="bounce" '+(s.motion==='bounce'?'selected':'')+'>Bouncy</option><option value="float" '+(s.motion==='float'?'selected':'')+'>Floaty</option><option value="still" '+(s.motion==='still'?'selected':'')+'>Still</option></select></label>'+
+      '<div class="section-title">CHARACTER MOVEMENT</div><label class="field"><span>Movement</span><select id="characterMotion">'+[['bounce','Bounce'],['float','Float'],['walk','Walk'],['run','Run'],['jump','Jump'],['wave','Wave'],['idle','Idle']].map(([v,l])=>'<option value="'+v+'" '+((s.characterMotion||({bounce:'bounce',float:'float',still:'idle'}[s.motion]||'bounce'))===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>'+
+      '<div class="section-title">CAMERA MOVEMENT</div><label class="field"><span>Camera</span><select id="cameraMotion">'+[['none','Static'],['pan-left','Pan left'],['pan-right','Pan right'],['pan-up','Pan up'],['zoom-in','Zoom in'],['zoom-out','Zoom out'],['shake','Shake']].map(([v,l])=>'<option value="'+v+'" '+((s.cameraMotion||'none')===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>'+
+      '<div class="section-title">SCENE OBJECTS</div><label class="field"><span>Background motion</span><select id="objectMotion">'+[['sparkles','Floating sparkles'],['bubbles','Bubbles'],['hearts','Hearts'],['rise','Rising particles'],['orbit','Orbiting sparkles'],['fast','Fast sparkles'],['none','None']].map(([v,l])=>'<option value="'+v+'" '+((s.objectMotion||'sparkles')===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>'+
+      '<label class="field"><span>Legacy motion style</span><select id="sceneMotion"><option value="bounce" '+(s.motion==='bounce'?'selected':'')+'>Bouncy</option><option value="float" '+(s.motion==='float'?'selected':'')+'>Floaty</option><option value="still" '+(s.motion==='still'?'selected':'')+'>Still</option></select></label>'+
       '<label class="field"><span>Scene duration · '+s.duration.toFixed(1)+'s</span><input id="sceneDuration" type="range" min="2" max="20" step=".5" value="'+s.duration+'"></label></div>'+
       '<button class="full-button" id="duplicateScene">▣ Duplicate scene</button><button class="full-button" id="deleteScene" style="margin-top:8px">− Delete scene</button>';
     } else {
@@ -389,6 +424,7 @@
     const bind=(id,fn,event='input')=>{const el=$(id);if(el)el.addEventListener(event,()=>fn(el.value));};
     bind('charName',v=>state.character.name=v);bind('speechText',v=>{state.character.speech=v;state.voiceBuffer=null;state.voiceText='';});bind('charColor',v=>state.character.color=v);bind('charSize',v=>state.character.size=+v);bind('charX',v=>state.character.x=+v);
     bind('sceneName',v=>selectedScene().name=v);bind('sceneBg',v=>selectedScene().background=v,'change');bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedScene().subtitle=v);bind('sceneMotion',v=>selectedScene().motion=v,'change');
+    bind('characterMotion',v=>selectedScene().characterMotion=v,'change');bind('cameraMotion',v=>selectedScene().cameraMotion=v,'change');bind('objectMotion',v=>selectedScene().objectMotion=v,'change');
     bind('sceneDuration',v=>{selectedScene().duration=+v;renderTimeline();updateClock();});
     if($('speakDialogue'))$('speakDialogue').onclick=()=>state.lipSync.active?stopLipSync():startLipSync();
     if($('voiceChoice')){$('voiceChoice').value=state.voiceName;$('voiceChoice').onchange=e=>{state.voiceName=e.target.value;state.voiceBuffer=null;state.voiceText='';};}
