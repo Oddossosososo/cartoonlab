@@ -309,6 +309,23 @@
     if(scene.subtitle){ctx.textAlign='center';ctx.fillStyle='#fff';ctx.globalAlpha=.85;ctx.font='500 22px DM Sans';ctx.fillText(scene.subtitle,640,137);ctx.globalAlpha=1;}
     drawCharacter(state.character,state.elapsed,scene);
     ctx.restore();
+    if(scene.counterEnabled){
+      const local=currentTime().local;
+      const interval=Math.max(.25,Number(scene.counterInterval)||1);
+      const value=(Number(scene.counterStart)||0)+Math.floor(local/interval)*(Number(scene.counterStep)||0);
+      const label=String(scene.counterLabel||'DAY').trim();
+      const unit=String(scene.counterUnit||'').trim();
+      const counterText=(label?label+' ':'')+value+(unit?' '+unit:'');
+      ctx.save();ctx.font='800 27px Space Grotesk';ctx.textAlign='center';
+      const width=Math.max(116,ctx.measureText(counterText).width+42),height=58,pad=22;
+      const corner=scene.counterCorner||'top-right';
+      const left=corner.includes('left')?pad:1280-width-pad;
+      const top=corner.includes('bottom')?720-height-pad:pad;
+      ctx.fillStyle='#171326dd';roundRect(ctx,left,top,width,height,15);ctx.fill();
+      ctx.strokeStyle='#ffffff38';ctx.lineWidth=1.5;roundRect(ctx,left,top,width,height,15);ctx.stroke();
+      ctx.fillStyle='#fff';ctx.fillText(counterText,left+width/2,top+37);
+      ctx.restore();
+    }
     if(!state.vip){ctx.textAlign='left';ctx.fillStyle='#ffffff88';ctx.font='600 13px DM Sans';ctx.fillText('CARTOONLAB',35,680);}
   }
   function updateClock(){
@@ -407,6 +424,11 @@
       field('Main title','sceneTitle',s.title)+field('Subtitle','sceneSubtitle',s.subtitle)+
       '<div class="section-title">CHARACTER MOVEMENT</div><label class="field"><span>Movement</span><select id="characterMotion">'+[['bounce','Bounce'],['float','Float'],['walk','Walk'],['run','Run'],['jump','Jump'],['wave','Wave'],['idle','Idle']].map(([v,l])=>'<option value="'+v+'" '+((s.characterMotion||({bounce:'bounce',float:'float',still:'idle'}[s.motion]||'bounce'))===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>'+
       '<div class="section-title">CAMERA MOVEMENT</div><label class="field"><span>Camera</span><select id="cameraMotion">'+[['none','Static'],['pan-left','Pan left'],['pan-right','Pan right'],['pan-up','Pan up'],['zoom-in','Zoom in'],['zoom-out','Zoom out'],['shake','Shake']].map(([v,l])=>'<option value="'+v+'" '+((s.cameraMotion||'none')===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>'+
+      '<div class="section-title">CORNER COUNTER</div><label class="field"><span><input id="counterEnabled" type="checkbox" '+(s.counterEnabled?'checked':'')+'> Show counter</span></label>'+
+      field('Counter label (e.g. DAY)','counterLabel',s.counterLabel||'DAY')+field('Starting number','counterStart',s.counterStart??1,'number')+
+      field('Increase by','counterStep',s.counterStep??1,'number')+field('Unit (e.g. DB)','counterUnit',s.counterUnit||'')+
+      '<label class="field"><span>Increase every</span><select id="counterInterval"><option value="1" '+((s.counterInterval||1)==1?'selected':'')+'>1 second</option><option value="2" '+(s.counterInterval==2?'selected':'')+'>2 seconds</option><option value="5" '+(s.counterInterval==5?'selected':'')+'>5 seconds</option><option value="10" '+(s.counterInterval==10?'selected':'')+'>10 seconds</option></select></label>'+
+      '<label class="field"><span>Corner</span><select id="counterCorner">'+[['top-right','Top right'],['top-left','Top left'],['bottom-right','Bottom right'],['bottom-left','Bottom left']].map(([v,l])=>'<option value="'+v+'" '+((s.counterCorner||'top-right')===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>'+
       '<div class="section-title">SCENE OBJECTS</div><label class="field"><span>Background motion</span><select id="objectMotion">'+[['sparkles','Floating sparkles'],['bubbles','Bubbles'],['hearts','Hearts'],['rise','Rising particles'],['orbit','Orbiting sparkles'],['fast','Fast sparkles'],['none','None']].map(([v,l])=>'<option value="'+v+'" '+((s.objectMotion||'sparkles')===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>'+
       '<label class="field"><span>Legacy motion style</span><select id="sceneMotion"><option value="bounce" '+(s.motion==='bounce'?'selected':'')+'>Bouncy</option><option value="float" '+(s.motion==='float'?'selected':'')+'>Floaty</option><option value="still" '+(s.motion==='still'?'selected':'')+'>Still</option></select></label>'+
       '<label class="field"><span>Scene duration · '+s.duration.toFixed(1)+'s</span><input id="sceneDuration" type="range" min="2" max="20" step=".5" value="'+s.duration+'"></label></div>'+
@@ -425,6 +447,9 @@
     bind('charName',v=>state.character.name=v);bind('speechText',v=>{state.character.speech=v;state.voiceBuffer=null;state.voiceText='';});bind('charColor',v=>state.character.color=v);bind('charSize',v=>state.character.size=+v);bind('charX',v=>state.character.x=+v);
     bind('sceneName',v=>selectedScene().name=v);bind('sceneBg',v=>selectedScene().background=v,'change');bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedScene().subtitle=v);bind('sceneMotion',v=>selectedScene().motion=v,'change');
     bind('characterMotion',v=>selectedScene().characterMotion=v,'change');bind('cameraMotion',v=>selectedScene().cameraMotion=v,'change');bind('objectMotion',v=>selectedScene().objectMotion=v,'change');
+    bind('counterLabel',v=>selectedScene().counterLabel=v);bind('counterStart',v=>selectedScene().counterStart=Number(v)||0);bind('counterStep',v=>selectedScene().counterStep=Number(v)||0);bind('counterUnit',v=>selectedScene().counterUnit=v);
+    bind('counterInterval',v=>selectedScene().counterInterval=Number(v),'change');bind('counterCorner',v=>selectedScene().counterCorner=v,'change');
+    if($('counterEnabled'))$('counterEnabled').onchange=e=>selectedScene().counterEnabled=e.target.checked;
     bind('sceneDuration',v=>{selectedScene().duration=+v;renderTimeline();updateClock();});
     if($('speakDialogue'))$('speakDialogue').onclick=()=>state.lipSync.active?stopLipSync():startLipSync();
     if($('voiceChoice')){$('voiceChoice').value=state.voiceName;$('voiceChoice').onchange=e=>{state.voiceName=e.target.value;state.voiceBuffer=null;state.voiceText='';};}
