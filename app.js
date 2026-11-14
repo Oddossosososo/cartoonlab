@@ -344,6 +344,45 @@
   function housePolygon(points,fill,stroke){
     ctx.beginPath();ctx.moveTo(points[0][0],points[0][1]);for(let i=1;i<points.length;i++)ctx.lineTo(points[i][0],points[i][1]);ctx.closePath();ctx.fillStyle=fill;ctx.fill();if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=4;ctx.stroke();}
   }
+  function drawWitheringForest(scene,time){
+    const progress=Math.max(0,Math.min(1,(Number(time)||0)/Math.max(.1,Number(scene.duration)||6)));
+    const sky=ctx.createLinearGradient(0,0,0,720);
+    sky.addColorStop(0,'#8aa9b5');sky.addColorStop(.62,'#c7bda5');sky.addColorStop(1,'#8b8065');
+    ctx.fillStyle=sky;ctx.fillRect(0,0,1280,720);
+    ctx.fillStyle='#75694f';ctx.fillRect(0,555,1280,165);
+    ctx.fillStyle='#a69a75';ctx.globalAlpha=.35;ctx.fillRect(0,555,1280,12);ctx.globalAlpha=1;
+    const trees=[{x:110,y:570,h:300,r:1},{x:330,y:575,h:260,r:.82},{x:600,y:580,h:340,r:1.12},{x:900,y:570,h:285,r:.94},{x:1160,y:575,h:320,r:1.05}];
+    trees.forEach((tree,index)=>{
+      const x=tree.x,y=tree.y,h=tree.h*tree.r;
+      ctx.save();ctx.translate(x,y);ctx.scale(tree.r,tree.r);
+      ctx.strokeStyle='#594431';ctx.lineCap='round';ctx.lineWidth=25;ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(0,-h);ctx.stroke();
+      ctx.lineWidth=13;
+      const branches=[[-85,-h*.78,-155,-h*.98],[82,-h*.72,150,-h*.96],[-65,-h*.55,-125,-h*.73],[60,-h*.48,125,-h*.7],[-35,-h*.9,-75,-h*1.08],[30,-h*.86,88,-h*1.05]];
+      branches.forEach(([x1,y1,x2,y2])=>{ctx.beginPath();ctx.moveTo(0,y1);ctx.lineTo(x1,y1-20);ctx.lineTo(x2,y2);ctx.stroke();});
+      const leafCount=16;
+      for(let n=0;n<leafCount;n++){
+        const a=(n*2.399+index)*1.3,rad=35+(n%5)*19;
+        const lx=Math.cos(a)*rad,ly=-h*.76+Math.sin(a)*rad*.72;
+        const withered=progress*leafCount;
+        if(n<withered)continue;
+        ctx.fillStyle=['#477b4d','#63934f','#829c55','#a1a45d'][n%4];
+        ctx.beginPath();ctx.ellipse(lx,ly,27,18,a,0,Math.PI*2);ctx.fill();
+      }
+      ctx.restore();
+    });
+    // Leaves drift down as the scene advances, leaving increasingly bare branches.
+    for(let n=0;n<24;n++){
+      const phase=(progress*1.8+n*.137)%1;
+      if(phase<.12)continue;
+      const x=(n*173+80+Math.sin(time*1.5+n)*35)%1280;
+      const y=300+phase*340;
+      ctx.save();ctx.translate(x,y);ctx.rotate(time*1.7+n);
+      ctx.fillStyle='#b78a45';ctx.globalAlpha=.8;
+      ctx.beginPath();ctx.ellipse(0,0,7,3,0,0,Math.PI*2);ctx.fill();ctx.restore();
+    }
+    if(progress>.72){ctx.fillStyle='#5c5140';ctx.globalAlpha=(progress-.72)*.35;ctx.fillRect(0,0,1280,720);ctx.globalAlpha=1;}
+  }
+
   function drawHouseRoom(scene,time){
     const room=scene.houseRoom||'hallway',walk=scene.cameraMotion==='walkthrough';
     const step=walk?Math.sin(time*7)*5:0,depth=walk?Math.min(1,time/Math.max(1,scene.duration))*.28:0;
@@ -454,7 +493,7 @@
     if(has3D&&window.CartoonLab3D.canvas&&(scene.layers?.background!==false))ctx.drawImage(window.CartoonLab3D.canvas,0,0,1280,720);
     const layers=scene.layers||{};
     if(scene.houseRoom){if(layers.background!==false&&!has3D)drawHouseRoom(scene,state.elapsed);if(layers.character!==false){drawCharacter(studioCharacter(scene,activeTime.local),state.elapsed,scene);state.extraCharacters.forEach(c=>drawCharacter(c,state.elapsed,scene));}if(scene.title){ctx.save();ctx.textAlign='center';ctx.fillStyle='#fff';ctx.shadowColor='#0008';ctx.shadowBlur=12;ctx.font='800 42px Space Grotesk';ctx.fillText(scene.title,640,72);ctx.restore();}if(scene.subtitle){ctx.save();ctx.textAlign='center';ctx.fillStyle='#fff';ctx.font='500 20px DM Sans';ctx.fillText(scene.subtitle,640,108);ctx.restore();}}
-    else if(layers.background!==false&&!has3D){const grad=ctx.createLinearGradient(0,0,0,720);grad.addColorStop(0,bg[0]);grad.addColorStop(.65,bg[1]);grad.addColorStop(1,bg[2]);ctx.fillStyle=grad;ctx.fillRect(0,0,1280,720);}
+    else if(layers.background!==false&&!has3D){if(scene.background==='withering-forest')drawWitheringForest(scene,activeTime.local);else{const grad=ctx.createLinearGradient(0,0,0,720);grad.addColorStop(0,bg[0]);grad.addColorStop(.65,bg[1]);grad.addColorStop(1,bg[2]);ctx.fillStyle=grad;ctx.fillRect(0,0,1280,720);}}
     if(scene.houseRoom){if(layers.counter!==false)drawCounter(scene,activeTime.local);return;}
     const t=state.elapsed, camera=scene.cameraMotion||'none';
     let zoom=1,panX=0,panY=0,shakeX=0,shakeY=0;
@@ -591,7 +630,7 @@
       '<button class="full-button" id="addCharacter">＋ Add another character</button><p class="muted-copy">Add up to 20 extra characters. Each one appears in the scene and can have its own name, colour and position.</p>'+state.extraCharacters.map((extra,i)=>'<div class="inspector-section"><div class="section-title">EXTRA CHARACTER '+(i+1)+'</div>'+field('Name','extraName'+i,extra.name||'Character '+(i+1))+field('Colour','extraColor'+i,extra.color||'#8bd5ff','color')+field('Stage position (px)','extraX'+i,extra.x??(800+i*20),'number')+'<button class="full-button" data-remove-character="'+i+'">Remove character</button></div>').join('')+'<p class="muted-copy">Tip: change the expression between scenes to make reactions feel alive.</p>';
     } else if(tab==='scenes'){
       html='<div class="inspector-section"><div class="section-title">SCENE SETTINGS</div>'+field('Scene name','sceneName',s.name)+
-      '<label class="field"><span>Background</span><select id="sceneBg">'+Object.keys(backgrounds).map(k=>'<option value="'+k+'" '+(s.background===k?'selected':'')+'>'+k[0].toUpperCase()+k.slice(1)+'</option>').join('')+'</select></label>'+
+      '<label class="field"><span>Background</span><select id="sceneBg">'+Object.keys(backgrounds).map(k=>'<option value="'+k+'" '+(s.background===k?'selected':'')+'>'+k[0].toUpperCase()+k.slice(1)+'</option>').join('')+'<option value="withering-forest" '+(s.background==='withering-forest'?'selected':'')+'>Withering forest · changes over time</option></select></label>'+
       field('Main title','sceneTitle',s.title)+field('Subtitle','sceneSubtitle',s.subtitle)+
       (s.houseRoom?'<div class="section-title">HOUSE WALKTHROUGH</div><label class="field"><span>Room</span><select id="houseRoom">'+[['front','Outside / front'],['hallway','Hallway'],['living','Living room'],['kitchen','Kitchen'],['bedroom','Bedroom'],['backyard','Backyard']].map(([v,l])=>'<option value="'+v+'" '+(s.houseRoom===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>':'')+
       '<div class="section-title">CHARACTER MOVEMENT</div><label class="field"><span>Movement</span><select id="characterMotion">'+[['bounce','Bounce'],['float','Float'],['walk','Walk'],['run','Run'],['jump','Jump'],['wave','Wave'],['idle','Idle']].map(([v,l])=>'<option value="'+v+'" '+((s.characterMotion||({bounce:'bounce',float:'float',still:'idle'}[s.motion]||'bounce'))===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>'+
@@ -635,7 +674,9 @@
     if($('addCharacter'))$('addCharacter').onclick=()=>{if(state.extraCharacters.length>=20){toast('Character limit reached (20 extra characters)');return;}state.extraCharacters.push({name:'Character '+(state.extraCharacters.length+2),color:['#8bd5ff','#c6a6ff','#ffd27d','#9ce6b0'][state.extraCharacters.length%4],expression:'happy',x:820,size:0.9,speech:'',ttsText:''});renderInspector();draw();scheduleSave();toast('Character added to your scene');};
     document.querySelectorAll('[data-remove-character]').forEach(b=>b.onclick=()=>{state.extraCharacters.splice(Number(b.dataset.removeCharacter),1);renderInspector();draw();scheduleSave();});
 bind('speechText',v=>state.character.speech=v);bind('ttsText',v=>{state.character.ttsText=v;state.voiceBuffer=null;state.voiceText='';});bind('charColor',v=>state.character.color=v);bind('charSize',v=>{const n=Number(v);if(Number.isFinite(n)&&n>0)state.character.size=n;});bind('charX',v=>{const n=Number(v);if(Number.isFinite(n))state.character.x=n;});
-    bind('sceneName',v=>selectedScene().name=v);bind('sceneBg',v=>selectedScene().background=v,'change');bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedScene().subtitle=v);bind('sceneMotion',v=>selectedScene().motion=v,'change');
+    bind('sceneName',v=>selectedScene().name=v);
+    if($('sceneBg'))$('sceneBg').onchange=e=>{const scene=selectedScene();scene.background=e.target.value;if(e.target.value==='withering-forest'){scene.title='YES, ALL LIFE.';scene.subtitle='Trees are life.';}draw();scheduleSave();};
+bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedScene().subtitle=v);bind('sceneMotion',v=>selectedScene().motion=v,'change');
     bind('characterMotion',v=>selectedScene().characterMotion=v,'change');bind('houseRoom',v=>selectedScene().houseRoom=v,'change');bind('cameraMotion',v=>selectedScene().cameraMotion=v,'change');bind('objectMotion',v=>selectedScene().objectMotion=v,'change');
     bind('counterLabel',v=>selectedScene().counterLabel=v);bind('counterStart',v=>{const n=Number(v);if(Number.isFinite(n))selectedScene().counterStart=n;});bind('counterStep',v=>{const n=Number(v);if(Number.isFinite(n))selectedScene().counterStep=n;});bind('counterUnit',v=>selectedScene().counterUnit=v);
     bind('counterDelay',v=>{const n=Number(v);if(Number.isFinite(n)&&n>=0)selectedScene().counterDelay=n;});
