@@ -338,7 +338,7 @@
     // soft ground shadow
     ctx.fillStyle='#100e1c55';ctx.beginPath();ctx.ellipse(0,105*c.size,105*c.size,19*c.size,0,0,Math.PI*2);ctx.fill();
     // feet
-    ctx.fillStyle='#30233a';ctx.beginPath();ctx.ellipse((-43+stride)*c.size,87*c.size,32*c.size,17*c.size,.15,0,Math.PI*2);ctx.ellipse((43-stride)*c.size,87*c.size,32*c.size,17*c.size,-.15,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#30233a';ctx.beginPath();ctx.ellipse((-43+stride)*c.size,87*c.size,32*c.size,17*c.size,.15+Number(c.rig?.legLeft||0)*Math.PI/180,0,Math.PI*2);ctx.ellipse((43-stride)*c.size,87*c.size,32*c.size,17*c.size,-.15+Number(c.rig?.legRight||0)*Math.PI/180,0,Math.PI*2);ctx.fill();
     // body
     ctx.fillStyle=c.color;ctx.beginPath();ctx.ellipse(0,0,r*.95,r*1.02,0,0,Math.PI*2);ctx.fill();
     ctx.fillStyle='#ffffff24';ctx.beginPath();ctx.ellipse(-r*.28,-r*.43,r*.23,r*.35,-.5,0,Math.PI*2);ctx.fill();
@@ -560,7 +560,7 @@
       card.setAttribute('role','button');
       card.setAttribute('aria-label','Select '+scene.name);
       card.style.flexBasis=Math.max(112,Number(scene.duration)*34)+'px';
-      card.innerHTML='<span class="scene-resize scene-resize-left" title="Drag to change segment length" aria-label="Resize segment from start"></span><span class="scene-drag" draggable="true" title="Drag to reorder" aria-label="Drag to reorder">⠿</span><button class="scene-delete" type="button" title="Delete segment (Backspace)" aria-label="Delete '+escapeHtml(scene.name)+'">×</button><b>'+escapeHtml(scene.name)+'</b><small>'+Number(scene.duration).toFixed(1)+' sec</small><span class="scene-num">'+String(i+1).padStart(2,'0')+'</span><span class="scene-resize scene-resize-right" title="Drag to change segment length" aria-label="Resize segment from end"></span>';
+      card.innerHTML='<span class="scene-resize scene-resize-left" title="Drag to change segment length" aria-label="Resize segment from start"></span><span class="scene-drag" draggable="true" title="Drag to reorder" aria-label="Drag to reorder">⠿</span><button class="scene-delete" type="button" title="Delete segment (Backspace)" aria-label="Delete '+escapeHtml(scene.name)+'">×</button><b>'+escapeHtml(scene.name)+'</b><small>'+Number(scene.duration).toFixed(1)+' sec</small><span class="keyframe-markers">'+(scene.keyframes||[]).map(k=>'<i title="Keyframe at '+k.time.toFixed(2)+'s"></i>').join('')+'</span><span class="scene-num">'+String(i+1).padStart(2,'0')+'</span><span class="scene-resize scene-resize-right" title="Drag to change segment length" aria-label="Resize segment from end"></span>';
       const select=()=>{state.selected=i;state.elapsed=state.scenes.slice(0,i).reduce((n,x)=>n+Number(x.duration||0),0);renderTimeline();renderInspector();scheduleSave();};
       card.addEventListener('click',e=>{if(e.target.closest('.scene-delete,.scene-drag'))return;select();});
       card.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();select();}});
@@ -643,10 +643,10 @@
       '<button class="full-button" id="duplicateScene">▣ Duplicate scene</button><button class="full-button" id="deleteScene" title="Delete selected scene (Backspace)" style="margin-top:8px">− Delete scene</button>';
     } else if(tab==='studio'){
       const s=selectedScene(), layers=s.layers||(s.layers={background:true,props:true,character:true,speech:true,counter:true});
-      const rig=state.character.rig||(state.character.rig={armLeft:0,armRight:0});
+      const rig=state.character.rig||(state.character.rig={armLeft:0,armRight:0,legLeft:0,legRight:0});
       html='<div class="inspector-section"><div class="section-title">KEYFRAMES</div><p class="muted-copy">Set the playhead, adjust the character, then capture a keyframe. Position and size interpolate between keys.</p><button class="full-button" id="addKeyframe">＋ Add keyframe</button><button class="full-button" id="clearKeyframes" style="margin-top:7px">Clear scene keyframes</button><div id="keyframeList" class="keyframe-list"></div></div>'+
       '<div class="inspector-section"><div class="section-title">ONION SKIN</div><label class="field"><span><input id="onionSkin" type="checkbox" '+(state.onionSkin?'checked':'')+'> Show previous pose</span></label></div>'+
-      '<div class="inspector-section"><div class="section-title">CHARACTER RIG</div><label class="field"><span>Left arm angle</span><input id="rigArmLeft" type="number" value="'+Number(rig.armLeft||0)+'"></label><label class="field"><span>Right arm angle</span><input id="rigArmRight" type="number" value="'+Number(rig.armRight||0)+'"></label><button class="full-button" id="resetRig">Reset pose</button></div>'+
+      '<div class="inspector-section"><div class="section-title">CHARACTER RIG</div>'+[['armLeft','Left arm'],['armRight','Right arm'],['legLeft','Left leg'],['legRight','Right leg']].map(([k,label])=>'<label class="field"><span>'+label+' angle</span><input id="rig'+k[0].toUpperCase()+k.slice(1)+'" type="number" value="'+Number(rig[k]||0)+'"></label>').join('')+'<button class="full-button" id="resetRig">Reset pose</button></div>'+
       '<div class="inspector-section"><div class="section-title">LAYERS</div>'+[['background','Background'],['props','Particles'],['character','Character'],['speech','Speech bubble'],['counter','Counter']].map(([k,v])=>'<label class="field"><span><input type="checkbox" data-layer="'+k+'" '+(layers[k]!==false?'checked':'')+'> '+v+'</span></label>').join('')+'</div>'+
       '<div class="inspector-section"><div class="section-title">CAMERA</div>'+field('Zoom','cameraZoom',s.cameraZoom||1,'number')+field('Pan X','cameraX',s.cameraX||0,'number')+field('Pan Y','cameraY',s.cameraY||0,'number')+'</div>'+
       '<div class="inspector-section"><div class="section-title">PROJECT HISTORY</div><div class="field-row"><button class="full-button" id="undoEdit">↶ Undo</button><button class="full-button" id="redoEdit">↷ Redo</button></div><button class="full-button" id="backupProject" style="margin-top:7px">Download project backup</button><label class="full-button" style="display:block;margin-top:7px">Restore project backup<input id="restoreBackup" type="file" accept=".json,application/json" hidden></label></div>'+
@@ -796,8 +796,8 @@
     if($('addKeyframe'))$('addKeyframe').onclick=addStudioKey;
     if($('clearKeyframes'))$('clearKeyframes').onclick=()=>{s.keyframes=[];renderInspector();scheduleSave();};
     if($('onionSkin'))$('onionSkin').onchange=e=>{state.onionSkin=e.target.checked;draw();};
-    ['armLeft','armRight'].forEach(k=>{const el=$('rig'+k[0].toUpperCase()+k.slice(1));if(el)el.oninput=()=>{rig[k]=Number(el.value)||0;draw();scheduleSave();};});
-    if($('resetRig'))$('resetRig').onclick=()=>{state.character.rig={armLeft:0,armRight:0};renderInspector();draw();scheduleSave();};
+    ['armLeft','armRight','legLeft','legRight'].forEach(k=>{const el=$('rig'+k[0].toUpperCase()+k.slice(1));if(el)el.oninput=()=>{rig[k]=Number(el.value)||0;draw();scheduleSave();};});
+    if($('resetRig'))$('resetRig').onclick=()=>{state.character.rig={armLeft:0,armRight:0,legLeft:0,legRight:0};renderInspector();draw();scheduleSave();};
     document.querySelectorAll('[data-layer]').forEach(el=>el.onchange=()=>{layers[el.dataset.layer]=el.checked;draw();scheduleSave();});
     ['cameraZoom','cameraX','cameraY'].forEach(k=>{const el=$(k);if(el)el.oninput=()=>{s[k]=Number(el.value)||0;draw();scheduleSave();};});
     if($('undoEdit'))$('undoEdit').onclick=undoStudio;if($('redoEdit'))$('redoEdit').onclick=redoStudio;
@@ -824,7 +824,7 @@
     state.elapsed=0;state.playing=true;$('playButton').textContent='Ⅱ';rec.start(100);if(audioSource){if(ac.state==='suspended')await ac.resume();audioSource.start();}
     setTimeout(()=>{if(rec.state!=='inactive')rec.stop();},totalDuration()*1000+150);
   }
-  document.addEventListener('input',checkpoint);
+  document.addEventListener('input',checkpoint);document.addEventListener('click',checkpoint);
   document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?redoStudio():undoStudio();}else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='y'){e.preventDefault();redoStudio();}});
 
     renderTimeline();renderInspector();requestAnimationFrame(frame);
