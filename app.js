@@ -419,9 +419,11 @@
     const p=Math.min(1,t/totalDuration())*100;$('scrubFill').style.width=p+'%';$('scrubKnob').style.left=p+'%';
     const cur=currentTime();$('sceneCounter').textContent=String(cur.index+1).padStart(2,'0')+' / '+String(state.scenes.length).padStart(2,'0');
   }
+  const UI_FRAME_INTERVAL=1000/24;
   function frame(now){
     if(!state.lastFrame)state.lastFrame=now;
-    const dt=Math.min((now-state.lastFrame)/1000,.05);state.lastFrame=now;
+    if(now-state.lastFrame<UI_FRAME_INTERVAL){requestAnimationFrame(frame);return;}
+    const dt=Math.min((now-state.lastFrame)/1000,.1);state.lastFrame=now;
     if(state.playing){state.elapsed+=dt;if(state.elapsed>=totalDuration()){state.elapsed=0;state.playing=false;$('playButton').textContent='▶';}}
     const cur=currentTime();if(cur.index!==state.selected){state.selected=cur.index;renderTimeline();renderInspector();}
     draw();updateClock();requestAnimationFrame(frame);
@@ -591,7 +593,7 @@
       }
       const ac=voiceBuffer?audioContext():null;
       if(ac&&ac.state==='suspended')await ac.resume();
-      const stream=canvas.captureStream(30);
+      const stream=canvas.captureStream(24);
       let audioDestination=null,voiceSource=null;
       if(voiceBuffer){
         audioDestination=ac.createMediaStreamDestination();
