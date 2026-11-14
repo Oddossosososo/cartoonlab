@@ -39,3 +39,5 @@ input[type="range"], input[type="color"]{cursor:pointer}
 
 /* Animation studio upgrades */
 .audio-waveform{display:block;width:100%;height:90px;background:#171522;border:1px solid var(--line);border-radius:8px}.keyframe-list{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}.keyframe-list .choice{font-variant-numeric:tabular-nums}.inspector-tabs{flex-wrap:wrap}.inspector-tab{min-width:58px}.field input[type=number]{font-variant-numeric:tabular-nums}
+
+.keyframe-markers{display:flex;gap:3px;position:absolute;left:26px;bottom:5px;max-width:65%;overflow:hidden}.keyframe-markers i{display:block;width:6px;height:6px;border-radius:50%;background:#ffd88a;box-shadow:0 0 5px #ffd88a88;flex:0 0 auto}.scene-card small{padding-bottom:5px}
