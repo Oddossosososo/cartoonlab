@@ -114,7 +114,7 @@
       const raw=localStorage.getItem(PROJECT_KEY);
       if(!raw)return;
       const saved=JSON.parse(raw);
-      if(!saved || saved.version!==1 || !Array.isArray(saved.scenes) || !saved.scenes.length)return;
+      if(!saved || ![1,3].includes(saved.version) || !Array.isArray(saved.scenes) || !saved.scenes.length)return;
       if(saved.character && typeof saved.character==='object'){state.character={...state.character,...saved.character};if(typeof saved.character.ttsText!=='string')state.character.ttsText=String(saved.character.speech||'');}if(Array.isArray(saved.extraCharacters))state.extraCharacters=saved.extraCharacters.filter(c=>c&&typeof c==='object').slice(0,20);if(Array.isArray(saved.meshObjects))state.meshObjects=saved.meshObjects.filter(m=>m&&typeof m==='object').slice(0,100);
       state.scenes=saved.scenes.filter(s=>s && typeof s==='object' && Number.isFinite(Number(s.duration)) && Number(s.duration)>0);
       if(!state.scenes.length)state.scenes=[{name:'Opening scene',duration:3,background:'sunset',title:'WHAT IF...?',subtitle:'A tiny idea. A BIG adventure.',motion:'bounce'}];
