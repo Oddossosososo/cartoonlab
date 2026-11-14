@@ -727,11 +727,12 @@
       '<div class="inspector-section"><div class="section-title">HYPERSHORT · HSL</div><p class="muted-copy">Complete local project format. HSL files preserve characters, scenes, settings, and keyframes.</p><button class="full-button" id="exportHsl">Export .hsl</button><label class="full-button" style="display:block;margin-top:7px">Import .hsl file<input id="importHsl" type="file" accept=".hsl,text/plain" hidden></label><label class="field" style="margin-top:10px"><span>Type or paste HSL code</span><textarea id="typedHsl" rows="7" spellcheck="false" placeholder="!cartoonlab 2&#10;@10 sunset&#10;>A new scene&#10;_A subtitle"></textarea></label><button class="full-button" id="importTypedHsl">Import typed HSL</button><p class="muted-copy">Import by selecting a .hsl file or typing/pasting its contents above. Legacy scene scripts are supported.</p></div>'+
       '<div class="inspector-section"><div class="section-title">VIDEO EXPORT</div><label class="field"><span>Format</span><select id="exportFormat"><option value="webm">WebM</option><option value="mp4">MP4 (if supported)</option></select></label><button class="full-button" id="exportSelectedFormat">Export video</button></div>';
     } else if(tab==='audio'){
-      html='<div class="inspector-section"><div class="section-title">AUDIO & VOICE</div><p class="muted-copy">Add your own narration or music track. Audio stays in this browser session.</p>'+
+      html='<div class="inspector-section"><div class="section-title">AUDIO & VOICE</div><p class="muted-copy">Add narration, sound effects and background music.</p>'+
       '<button class="full-button" id="uploadAudio">＋ Import audio file</button>'+
       (state.audioName?'<p class="muted-copy">♫ Tracks: '+escapeHtml(state.audioName)+'</p>':'')+
+      '<div class="inspector-section" style="padding:13px;border:1px solid #a78bfa44;border-radius:12px;background:#a78bfa0b"><div class="section-title">ROYALTY-FREE MUSIC LIBRARY</div><p class="muted-copy">Search and preview music from Free To Use, then add a track to your film.</p><div class="field"><input id="musicSearchQuery" type="search" placeholder="Try cinematic, ambient, piano…" value="cinematic ambient"></div><button class="full-button" id="musicSearchButton">⌕ Search music</button><div id="musicSearchResults" style="display:grid;gap:8px;margin-top:10px"><p class="muted-copy">Search for a soundtrack to get started.</p></div><label class="field"><span>Background music volume · '+Math.round(state.musicVolume*100)+'%</span><input id="musicVolume" type="range" min="0" max="1" step="0.01" value="'+state.musicVolume+'"></label>'+(state.musicTrack?'<p class="muted-copy">Selected: <b>'+escapeHtml(state.musicTrack.title||'Music track')+'</b> · '+escapeHtml(state.musicTrack.artist||'Artist')+'</p>':'')+'<p class="muted-copy">Free use has conditions; commercial use requires the appropriate licence. <a href="https://freetouse.com/license" target="_blank" rel="noopener">Read licence</a>.</p></div>'+
       '<label class="field"><span>Sound effects</span><div class="choice-row"><button class="choice" data-sound="pop">Pop</button><button class="choice" data-sound="boing">Boing</button><button class="choice" data-sound="sparkle">Sparkle</button></div></label>'+
-      '<p class="muted-copy">Import multiple audio files. Studio exports mix imported tracks into WebM or supported MP4 exports.</p></div>';
+      '<p class="muted-copy">Imported and selected music tracks are mixed into video exports.</p></div>';
     }
     $('inspectorContent').innerHTML=html;bindInspector();if(tab==='studio')bindStudio();
   }
@@ -916,18 +917,25 @@ bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedSc
         voiceBuffer=await generateVoice();
         if(!voiceBuffer)throw new Error('No voice audio was generated.');
       }
-      const ac=voiceBuffer?audioContext():null;
+      const ac=(voiceBuffer||state.audioTracks.length)?audioContext():null;
       if(ac&&ac.state==='suspended')await ac.resume();
       const stream=canvas.captureStream(24);
-      let audioDestination=null,voiceSource=null;
-      if(voiceBuffer){
+      let audioDestination=null,voiceSource=null,exportAudioSources=[];
+      if(ac){
         audioDestination=ac.createMediaStreamDestination();
-        const analyser=ac.createAnalyser();analyser.fftSize=256;
-        voiceSource=ac.createBufferSource();voiceSource.buffer=voiceBuffer;
-        voiceSource.connect(analyser);
-        analyser.connect(audioDestination);
+        if(voiceBuffer){
+          const analyser=ac.createAnalyser();analyser.fftSize=256;
+          voiceSource=ac.createBufferSource();voiceSource.buffer=voiceBuffer;
+          voiceSource.connect(analyser);analyser.connect(audioDestination);
+          state.analyser=analyser;state.analyserData=new Uint8Array(analyser.fftSize);state.lipSync.active=true;
+        }
+        state.audioTracks.forEach(track=>{
+          if(!track.buffer)return;
+          const source=ac.createBufferSource();source.buffer=track.buffer;
+          const gain=ac.createGain();gain.gain.value=Number.isFinite(Number(track.gain))?Math.max(0,Math.min(1,Number(track.gain))):1;
+          source.connect(gain);gain.connect(audioDestination);exportAudioSources.push(source);
+        });
         audioDestination.stream.getAudioTracks().forEach(track=>stream.addTrack(track));
-        state.analyser=analyser;state.analyserData=new Uint8Array(analyser.fftSize);state.lipSync.active=true;
       }
       let mime='video/webm;codecs=vp9,opus';
       if(!MediaRecorder.isTypeSupported(mime))mime='video/webm';
@@ -951,7 +959,8 @@ bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedSc
         voiceSource.onended=()=>{state.lipSync.active=false;state.analyser=null;state.analyserData=null;};
         voiceSource.start(ac.currentTime+0.08);
       }
-      toast(voiceBuffer?'Recording video + AI voice…':'Recording video…');
+      if(exportAudioSources.length)exportAudioSources.forEach(source=>source.start(ac.currentTime+0.08));
+      toast(voiceBuffer?'Recording video + AI voice + music…':(exportAudioSources.length?'Recording video + music…':'Recording video…'));
       setTimeout(()=>{if(recorder.state!=='inactive')recorder.stop();},exportDuration*1000+150);
     }catch(error){
       console.error('CartoonLab video export:',error);
