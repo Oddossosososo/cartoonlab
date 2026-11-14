@@ -4,7 +4,7 @@
   const $ = (id) => document.getElementById(id);
   const state = {
     title: 'Untitled story', tab: 'characters', selected: 0, playing: false, vip: localStorage.getItem('cartoonlab-vip') === 'true',
-    elapsed: 0, lastFrame: 0, audioUrl: null, audioName: '', audioBuffer:null, audioTracks:[], kokoro: null, kokoroLoading: false, kokoroPromise: null, voiceBuffer: null, voiceText: '', voiceName: 'af_heart', voiceSpeed: 1, voiceBufferSpeed: 1, audioContext: null, voiceSource: null, analyser: null, analyserData: null, lipSync: { active:false, startedAt:0, utterance:null },
+    elapsed: 0, lastFrame: 0, audioUrl: null, audioName: '', audioBuffer:null, audioTracks:[], musicTrack:null, musicVolume:0.28, musicPreviewAudio:null, kokoro: null, kokoroLoading: false, kokoroPromise: null, voiceBuffer: null, voiceText: '', voiceName: 'af_heart', voiceSpeed: 1, voiceBufferSpeed: 1, audioContext: null, voiceSource: null, analyser: null, analyserData: null, lipSync: { active:false, startedAt:0, utterance:null },
     character: { name: 'Bloop', color: '#ff9cba', expression: 'happy', x: 640, size: 1, speech: 'What if...?', ttsText: 'What if...?' }, extraCharacters: [], meshObjects: [], selectedMesh: 0, selectedVertex: 0,
     scenes: [{ name: 'Opening scene', duration: 6, background: 'sunset', title: 'WHAT IF...?', subtitle: 'A tiny idea. A BIG adventure.', motion: 'bounce' }]
   };
@@ -90,7 +90,7 @@
     }
   }
   function projectSnapshot(){
-    return {version:3,title:state.title,character:state.character,extraCharacters:state.extraCharacters,meshObjects:state.meshObjects,selectedMesh:state.selectedMesh,scenes:state.scenes,selected:state.selected,elapsed:state.elapsed,vip:state.vip,voiceSpeed:state.voiceSpeed,voiceName:state.voiceName};
+    return {version:3,title:state.title,character:state.character,extraCharacters:state.extraCharacters,meshObjects:state.meshObjects,selectedMesh:state.selectedMesh,scenes:state.scenes,selected:state.selected,elapsed:state.elapsed,vip:state.vip,voiceSpeed:state.voiceSpeed,voiceName:state.voiceName,musicTrack:state.musicTrack,musicVolume:state.musicVolume};
   }
   function saveProject(){
     try{
@@ -123,7 +123,7 @@
       state.selectedMesh=Math.max(0,Math.min(state.meshObjects.length-1,Number(saved.selectedMesh)||0));
       state.elapsed=Math.max(0,Math.min(Number(saved.elapsed)||0,state.scenes.reduce((n,s)=>n+Number(s.duration||0),0)));
       if(typeof saved.vip==='boolean')state.vip=saved.vip;
-      if(Number.isFinite(Number(saved.voiceSpeed)))state.voiceSpeed=Number(saved.voiceSpeed);
+      if(Number.isFinite(Number(saved.voiceSpeed)))state.voiceSpeed=Number(saved.voiceSpeed);if(Number.isFinite(Number(saved.musicVolume)))state.musicVolume=Math.max(0,Math.min(1,Number(saved.musicVolume)));if(saved.musicTrack&&typeof saved.musicTrack==='object')restoreMusicTrack(saved.musicTrack);
       $('projectTitle').textContent=state.title;
     }catch(error){console.warn('CartoonLab could not restore the saved project:',error);}
   }
@@ -735,6 +735,58 @@
     }
     $('inspectorContent').innerHTML=html;bindInspector();if(tab==='studio')bindStudio();
   }
+
+  const MUSIC_API_BASE='https://api.freetouse.com/v3';
+  function musicArtistName(track){return (track.artists||[]).map(item=>Array.isArray(item)?item[1]?.name:item?.name).filter(Boolean).join(', ')||'Unknown artist';}
+  function musicTrackUrl(track){return track?.files?.mp3||track?.mp3_url||track?.audio_url||'';}
+  function renderMusicResults(tracks){
+    const host=$('musicSearchResults');if(!host)return;
+    const usable=(Array.isArray(tracks)?tracks:[]).filter(t=>t&&!t.is_premium&&musicTrackUrl(t));
+    if(!usable.length){host.innerHTML='<p class="muted-copy">No free tracks found. Try another search.</p>';return;}
+    host.innerHTML=usable.slice(0,12).map((t,i)=>'<div style="padding:10px;border:1px solid #ffffff18;border-radius:10px;background:#0f0e18"><b style="display:block;font-size:11px;color:#eee">'+escapeHtml(t.title||'Untitled track')+'</b><small style="display:block;color:#9b95ad;margin:4px 0 8px">'+escapeHtml(musicArtistName(t))+' · '+Math.round(Number(t.duration)||0)+'s</small><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="choice" data-music-preview="'+i+'">▶ Preview</button><button class="choice" data-music-add="'+i+'">＋ Add to film</button></div></div>').join('');
+    host.querySelectorAll('[data-music-preview]').forEach(b=>b.onclick=()=>{const t=usable[Number(b.dataset.musicPreview)];if(!t)return;if(state.musicPreviewAudio){state.musicPreviewAudio.pause();state.musicPreviewAudio=null;}const audio=new Audio(musicTrackUrl(t));audio.crossOrigin='anonymous';state.musicPreviewAudio=audio;audio.play().catch(()=>toast('Preview could not start. Try again.'));});
+    host.querySelectorAll('[data-music-add]').forEach(b=>b.onclick=()=>addRoyaltyFreeTrack(usable[Number(b.dataset.musicAdd)]));
+  }
+  async function searchRoyaltyFreeMusic(){
+    const button=$('musicSearchButton'),query=String($('musicSearchQuery')?.value||'').trim();
+    if(!query){toast('Enter a music search');return;}
+    if(button){button.disabled=true;button.textContent='Searching…';}
+    const host=$('musicSearchResults');if(host)host.innerHTML='<p class="muted-copy">Searching the Free To Use library…</p>';
+    try{
+      const url=MUSIC_API_BASE+'/music/tracks/search?'+new URLSearchParams({query,limit:'12',order:'views',sort:'desc'});
+      const response=await fetch(url);if(!response.ok)throw new Error('Music API returned '+response.status);
+      const data=await response.json();if(data.ok===false)throw new Error(data.error||'Music search failed');
+      renderMusicResults(data.data||[]);
+    }catch(error){console.error('Royalty-free music search:',error);if(host)host.innerHTML='<p class="muted-copy">Music search failed: '+escapeHtml(error.message||'network error')+'</p>';toast('Music search failed');}
+    finally{if(button){button.disabled=false;button.textContent='⌕ Search music';}}
+  }
+  async function addRoyaltyFreeTrack(track){
+    const url=musicTrackUrl(track);if(!url){toast('This track has no playable audio file');return;}
+    try{
+      toast('Loading background music…');
+      const response=await fetch(url);if(!response.ok)throw new Error('Track download returned '+response.status);
+      const buffer=await audioContext().decodeAudioData(await response.arrayBuffer());
+      state.audioTracks=state.audioTracks.filter(t=>t.source!=='music-api');
+      state.musicTrack={id:track.id,title:track.title||'Untitled track',artist:musicArtistName(track),url,license:'Free To Use License',source:'Free To Use',isPremium:false};
+      state.audioTracks.push({name:state.musicTrack.title+' — '+state.musicTrack.artist,url,buffer,source:'music-api',gain:state.musicVolume});
+      state.audioBuffer=buffer;state.audioName=state.audioTracks.map(t=>t.name).join(', ');
+      scheduleSave();renderInspector();if(state.tab==='studio')drawStudioWave();
+      toast('Background music added to the film');
+    }catch(error){console.error('Music track loading:',error);toast('Could not load this track: '+(error.message||'audio unavailable'));}
+  }
+  async function restoreMusicTrack(track){
+    if(!track||!track.url)return;
+    state.musicTrack=track;
+    try{
+      const response=await fetch(track.url);if(!response.ok)throw new Error('Track unavailable');
+      const buffer=await audioContext().decodeAudioData(await response.arrayBuffer());
+      state.audioTracks=state.audioTracks.filter(t=>t.source!=='music-api');
+      state.audioTracks.push({name:(track.title||'Background music')+' — '+(track.artist||'Artist'),url:track.url,buffer,source:'music-api',gain:state.musicVolume});
+      state.audioBuffer=buffer;state.audioName=state.audioTracks.map(t=>t.name).join(', ');
+      if(state.tab==='audio'||state.tab==='studio')renderInspector();
+    }catch(error){console.warn('Saved music track could not be restored:',error);}
+  }
+
   function bindInspector(){
     const bind=(id,fn,event='input')=>{const el=$(id);if(el)el.addEventListener(event,()=>fn(el.value));};
     bind('charName',v=>state.character.name=v);
@@ -784,6 +836,8 @@ bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedSc
     if($('duplicateScene'))$('duplicateScene').onclick=()=>{const copy={...selectedScene(),name:selectedScene().name+' copy'};state.scenes.splice(state.selected+1,0,copy);state.selected++;renderTimeline();renderInspector();toast('Scene duplicated');};
     if($('deleteScene'))$('deleteScene').onclick=()=>{if(state.scenes.length===1){toast('Keep at least one scene');return;}state.scenes.splice(state.selected,1);state.selected=Math.max(0,state.selected-1);state.elapsed=0;renderTimeline();renderInspector();};
     if($('uploadAudio'))$('uploadAudio').onclick=()=>$('audioUpload').click();
+     if($('musicSearchButton'))$('musicSearchButton').onclick=()=>searchRoyaltyFreeMusic();
+     if($('musicVolume'))$('musicVolume').oninput=e=>{state.musicVolume=Math.max(0,Math.min(1,Number(e.target.value)||0));const track=state.audioTracks.find(t=>t.source==='music-api');if(track)track.gain=state.musicVolume;const label=e.target.closest('label')?.querySelector('span');if(label)label.textContent='Background music volume · '+Math.round(state.musicVolume*100)+'%';scheduleSave();};
     document.querySelectorAll('[data-sound]').forEach(b=>b.onclick=()=>playSound(b.dataset.sound));
   }
   document.addEventListener('keydown',e=>{
@@ -932,7 +986,7 @@ bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedSc
     const bytes=Uint8Array.from(binary,c=>c.charCodeAt(0));
     return JSON.parse(new TextDecoder().decode(bytes));
   }
-  const HSL4_KEYS={version:'z',title:'t',character:'c',extraCharacters:'x',meshObjects:'m',scenes:'s',selected:'i',elapsed:'e',vip:'v',voiceSpeed:'w',voiceName:'n',name:'a',duration:'d',background:'b',subtitle:'u',motion:'o',characterMotion:'q',x:'X',y:'Y',size:'S',color:'C',expression:'E',speech:'p',ttsText:'T',counterEnabled:'ce',counterMode:'cm',counterStart:'cs',counterEnd:'cn',counterCorner:'cc',layers:'l',keyframes:'k',vertices:'V',faces:'F',type:'g',id:'I',scale:'Z',rotationX:'rx',rotationY:'ry',rotationZ:'rz',visible:'vi',houseRoom:'hr',cameraMotion:'ca',cameraZoom:'cz',cameraX:'cx',cameraY:'cy',objectMotion:'om',rig:'r',armLeft:'al',armRight:'ar',legLeft:'ll',legRight:'lr'};
+  const HSL4_KEYS={version:'z',title:'t',character:'c',extraCharacters:'x',meshObjects:'m',scenes:'s',selected:'i',elapsed:'e',vip:'v',voiceSpeed:'w',voiceName:'n',musicTrack:'mt',musicVolume:'mv',name:'a',duration:'d',background:'b',subtitle:'u',motion:'o',characterMotion:'q',x:'X',y:'Y',size:'S',color:'C',expression:'E',speech:'p',ttsText:'T',counterEnabled:'ce',counterMode:'cm',counterStart:'cs',counterEnd:'cn',counterCorner:'cc',layers:'l',keyframes:'k',vertices:'V',faces:'F',type:'g',id:'I',scale:'Z',rotationX:'rx',rotationY:'ry',rotationZ:'rz',visible:'vi',houseRoom:'hr',cameraMotion:'ca',cameraZoom:'cz',cameraX:'cx',cameraY:'cy',objectMotion:'om',rig:'r',armLeft:'al',armRight:'ar',legLeft:'ll',legRight:'lr'};
   const HSL4_REVERSE=Object.fromEntries(Object.entries(HSL4_KEYS).map(([key,short])=>[short,key]));
   function compactHslValue(value){
     if(Array.isArray(value))return value.map(compactHslValue);
@@ -984,7 +1038,7 @@ bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedSc
       state.elapsed=Math.max(0,Math.min(Number(project.elapsed)||0,totalDuration()));
       if(typeof project.vip==='boolean')state.vip=project.vip;
       if(Number.isFinite(Number(project.voiceSpeed)))state.voiceSpeed=Number(project.voiceSpeed);
-       if(typeof project.voiceName==='string'&&project.voiceName)state.voiceName=project.voiceName;
+       if(typeof project.voiceName==='string'&&project.voiceName)state.voiceName=project.voiceName;if(Number.isFinite(Number(project.musicVolume)))state.musicVolume=Math.max(0,Math.min(1,Number(project.musicVolume)));if(project.musicTrack&&typeof project.musicTrack==='object')restoreMusicTrack(project.musicTrack);
       $('projectTitle').textContent=state.title;
       renderTimeline();renderInspector();draw();updateClock();saveProject();
       toast('Imported complete HSL project · '+scenes.length+' scene(s)');
@@ -1047,7 +1101,7 @@ bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedSc
     const types=format==='mp4'?['video/mp4;codecs=avc1.42E01E','video/mp4']:['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'];
     const type=types.find(x=>MediaRecorder.isTypeSupported(x));if(!canvas.captureStream||!type){toast(format.toUpperCase()+' is not supported by this browser');return;}
     const stream=canvas.captureStream(30),ac=state.audioTracks.length?audioContext():null;let audioSources=[],audioDest=null;
-    if(ac&&state.audioTracks.length){audioDest=ac.createMediaStreamDestination();state.audioTracks.forEach(track=>{const source=ac.createBufferSource();source.buffer=track.buffer;source.connect(audioDest);audioSources.push(source);});audioDest.stream.getAudioTracks().forEach(t=>stream.addTrack(t));}
+    if(ac&&state.audioTracks.length){audioDest=ac.createMediaStreamDestination();state.audioTracks.forEach(track=>{const source=ac.createBufferSource();source.buffer=track.buffer;const gain=ac.createGain();gain.gain.value=Number.isFinite(Number(track.gain))?Math.max(0,Math.min(1,Number(track.gain))):1;source.connect(gain);gain.connect(audioDest);audioSources.push(source);});audioDest.stream.getAudioTracks().forEach(t=>stream.addTrack(t));}
     const rec=new MediaRecorder(stream,{mimeType:type}),chunks=[];rec.ondataavailable=e=>{if(e.data?.size)chunks.push(e.data);};
     rec.onstop=()=>{const blob=new Blob(chunks,{type:rec.mimeType||type});downloadBlob((state.title||'cartoonlab').replace(/[^a-z0-9-_]+/gi,'-')+'.'+(format==='mp4'?'mp4':'webm'),blob);stream.getTracks().forEach(t=>t.stop());state.playing=false;$('playButton').textContent='▶';toast(blob.size?'Export complete':'Export failed: the recorder produced an empty file');};
     state.elapsed=0;state.playing=true;$('playButton').textContent='Ⅱ';rec.start(100);if(audioSources.length){if(ac.state==='suspended')await ac.resume();audioSources.forEach(source=>source.start());}
