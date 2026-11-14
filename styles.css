@@ -15,3 +15,14 @@
 .scene-card.dragging{opacity:.4}
 .scene-card.drag-over{border-color:var(--mint);transform:translateY(-2px)}
 @media(hover:none){.scene-card .scene-delete,.scene-card .scene-drag{opacity:1;pointer-events:auto}}
+
+
+/* Direct-manipulation segment trimming */
+.scene-card{position:relative;touch-action:pan-y;overflow:visible}
+.scene-card .scene-resize{position:absolute;top:0;bottom:0;width:9px;z-index:3;cursor:ew-resize;touch-action:none;background:transparent}
+.scene-card .scene-resize:after{content:"";position:absolute;top:50%;left:3px;transform:translateY(-50%);height:22px;width:3px;border-radius:4px;background:#c6b5ff;opacity:.28}
+.scene-card:hover .scene-resize:after,.scene-card .scene-resize:focus:after{opacity:1}
+.scene-card .scene-resize-left{left:0;border-radius:8px 0 0 8px}
+.scene-card .scene-resize-right{right:0;border-radius:0 8px 8px 0}
+.scene-card .scene-resize-right:after{left:3px}
+.scene-card .scene-resize:hover{background:#9b7bff22}
