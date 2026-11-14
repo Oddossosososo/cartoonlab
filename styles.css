@@ -344,3 +344,12 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{
 .blender-studio .field{margin:10px 0}
 .blender-studio .field input,.blender-studio .field select{min-width:0}
 @media(max-width:700px){.blender-studio{min-height:0}.blender-top h2{font-size:22px}}
+
+
+/* Custom scene backgrounds + gentle cross-scene fades */
+.custom-background-editor{margin:15px 0;padding:13px;border:1px solid #a78bfa45;border-radius:13px;background:linear-gradient(145deg,#a78bfa10,#f5a4c608)}
+.custom-background-editor>.section-title{color:#d9caff;margin-bottom:9px}
+.background-upload{display:block;text-align:center;margin-top:9px;cursor:pointer}
+.background-image-preview{display:grid;grid-template-columns:1fr auto;align-items:center;gap:9px;margin-top:10px}
+.background-image-preview img{width:100%;height:76px;object-fit:cover;border-radius:9px;border:1px solid #ffffff25}
+#transitionDuration{accent-color:#a78bfa}
