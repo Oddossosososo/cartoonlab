@@ -642,7 +642,7 @@
       '<div class="section-title">CORNER COUNTER</div><label class="field"><span><input id="counterEnabled" type="checkbox" '+(s.counterEnabled?'checked':'')+'> Show counter</span></label>'+
       field('Counter label (e.g. DAY)','counterLabel',s.counterLabel||'DAY')+field('Starting number','counterStart',s.counterStart??1,'number')+
       field('Increase by','counterStep',s.counterStep??1,'number')+field('Unit (e.g. DB)','counterUnit',s.counterUnit||'')+
-      'field('Wait before first count (seconds)','counterDelay',s.counterDelay??0,'number')+
+      field('Wait before first count (seconds)','counterDelay',s.counterDelay??0,'number')+
       field('Count up every (seconds)','counterInterval',s.counterInterval??1,'number')+
       '<p class="muted-copy">Example: wait 3 seconds, then count up every 2 seconds. The counter starts at your starting number before the first count.</p>'+
       '<label class="field"><span>Corner</span><select id="counterCorner">'+[['top-right','Top right'],['top-left','Top left'],['bottom-right','Bottom right'],['bottom-left','Bottom left']].map(([v,l])=>'<option value="'+v+'" '+((s.counterCorner||'top-right')===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>'+
