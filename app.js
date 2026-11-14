@@ -724,7 +724,14 @@
     state.extraCharacters.forEach((c,i)=>{bind('extraName'+i,v=>c.name=v);bind('extraColor'+i,v=>c.color=v);bind('extraX'+i,v=>{const n=Number(v);if(Number.isFinite(n))c.x=n;});});
     if($('addCharacter'))$('addCharacter').onclick=()=>{if(state.extraCharacters.length>=20){toast('Character limit reached (20 extra characters)');return;}state.extraCharacters.push({name:'Character '+(state.extraCharacters.length+2),color:['#8bd5ff','#c6a6ff','#ffd27d','#9ce6b0'][state.extraCharacters.length%4],expression:'happy',x:820,size:0.9,speech:'',ttsText:''});renderInspector();draw();scheduleSave();toast('Character added to your scene');};
     document.querySelectorAll('[data-remove-character]').forEach(b=>b.onclick=()=>{state.extraCharacters.splice(Number(b.dataset.removeCharacter),1);renderInspector();draw();scheduleSave();});
-bind('speechText',v=>state.character.speech=v);bind('ttsText',v=>{state.character.ttsText=v;state.voiceBuffer=null;state.voiceText='';});bind('charColor',v=>state.character.color=v);bind('charSize',v=>{const n=Number(v);if(Number.isFinite(n)&&n>0)state.character.size=n;});bind('charX',v=>{const n=Number(v);if(Number.isFinite(n))state.character.x=n;});
+if($('addMesh'))$('addMesh').onclick=()=>{if(state.meshObjects.length>=100){toast('Mesh limit reached (100)');return;}const type=$('meshPrimitive')?.value||'cube';state.meshObjects.push(createPrimitiveMesh(type));renderInspector();draw();scheduleSave();toast(type+' mesh created');};
+    state.meshObjects.forEach((m,i)=>{
+      const num=(id,prop)=>bind(id+i,v=>{const n=Number(v);if(Number.isFinite(n))m[prop]=n;});
+      bind('meshName'+i,v=>m.name=v);bind('meshColor'+i,v=>m.color=v,'input');
+      num('meshX','x');num('meshY','y');num('meshScale','scale');num('meshRX','rotationX');num('meshRY','rotationY');num('meshRZ','rotationZ');
+    });
+    document.querySelectorAll('[data-remove-mesh]').forEach(b=>b.onclick=()=>{state.meshObjects.splice(Number(b.dataset.removeMesh),1);renderInspector();draw();scheduleSave();});
+    bind('speechText',v=>state.character.speech=v);bind('ttsText',v=>{state.character.ttsText=v;state.voiceBuffer=null;state.voiceText='';});bind('charColor',v=>state.character.color=v);bind('charSize',v=>{const n=Number(v);if(Number.isFinite(n)&&n>0)state.character.size=n;});bind('charX',v=>{const n=Number(v);if(Number.isFinite(n))state.character.x=n;});
     bind('sceneName',v=>selectedScene().name=v);
     if($('sceneBg'))$('sceneBg').onchange=e=>{const scene=selectedScene();scene.background=e.target.value;if(e.target.value==='withering-forest'){scene.title='YES, ALL LIFE.';scene.subtitle='Trees are life.';}draw();scheduleSave();};
 bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedScene().subtitle=v);bind('sceneMotion',v=>selectedScene().motion=v,'change');
