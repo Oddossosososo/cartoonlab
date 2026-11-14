@@ -131,11 +131,12 @@
   }
   function finishVoiceLoadUI(){
     const panel=$('kokoroLoadStatus');if(!panel)return;
-    $('kokoroLoadTitle').textContent='AI voice ready';
+    $('kokoroLoadTitle').textContent='✓ Download complete';
+    $('kokoroLoadTitle').style.color='#8fe3ad';
     $('kokoroLoadPercent').textContent='100%';
     $('kokoroLoadBar').style.width='100%';
-    $('kokoroLoadDetail').textContent='Voice model loaded and ready to reuse.';
-    setTimeout(()=>panel.remove(),2000);
+    $('kokoroLoadBar').style.background='linear-gradient(90deg,#55c987,#8fe3ad)';
+    $('kokoroLoadDetail').textContent='Kokoro AI voice is loaded and ready to use. This status stays visible.';
   }
   async function loadKokoro(){
     if(state.kokoro)return state.kokoro;
