@@ -13,6 +13,22 @@
   function projectSnapshot(){
     return {version:1,title:state.title,character:state.character,scenes:state.scenes,selected:state.selected,elapsed:state.elapsed,vip:state.vip};
   }
+  function makeShareCode(){
+    const payload={...projectSnapshot(),audioTrackName:state.audioName||'',sharedAt:new Date().toISOString()};
+    const bytes=new TextEncoder().encode(JSON.stringify(payload));
+    let binary='';
+    for(let i=0;i<bytes.length;i++)binary+=String.fromCharCode(bytes[i]);
+    return 'CL1-'+btoa(binary).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,'');
+  }
+  async function shareProjectCode(){
+    const code=makeShareCode();
+    try{
+      await navigator.clipboard.writeText(code);
+      toast('Share code copied! Paste it into ChatGPT for a rating.');
+    }catch(error){
+      prompt('Copy your CartoonLab share code and paste it into ChatGPT:',code);
+    }
+  }
   function saveProject(){
     try{
       localStorage.setItem(PROJECT_KEY,JSON.stringify(projectSnapshot()));
@@ -191,6 +207,7 @@
   function updateVipButton(){if(vipButton){vipButton.textContent=state.vip?'✦ VIP ON':'✦ VIP';vipButton.classList.toggle('vip-active',state.vip);}}
   if(vipButton)vipButton.onclick=()=>{state.vip=!state.vip;localStorage.setItem('cartoonlab-vip',String(state.vip));updateVipButton();toast(state.vip?'VIP mode enabled · watermark hidden':'VIP mode disabled · watermark restored');};
   updateVipButton();
+  $('shareCode').onclick=shareProjectCode;
   $('playButton').onclick=()=>{state.playing=!state.playing;$('playButton').textContent=state.playing?'Ⅱ':'▶';if(state.elapsed>=totalDuration())state.elapsed=0;};
   $('restartButton').onclick=()=>{state.elapsed=0;state.playing=false;$('playButton').textContent='▶';};
   $('scrubTrack').onclick=e=>{const r=e.currentTarget.getBoundingClientRect();state.elapsed=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))*totalDuration();};
