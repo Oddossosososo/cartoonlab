@@ -7,7 +7,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { BokehPass } from 'three/addons/postprocessing/BokehPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 
-const W=1280,H=720,RENDER_W=960,RENDER_H=540,RENDER_INTERVAL=1000/24;
+const W=1280,H=720,RENDER_W=960,RENDER_H=540,RENDER_INTERVAL=1000/60;
 const palettes={
   sunset:{sky:0x302044,floor:0x8c6370,accent:0xffa17e},
   sky:{sky:0x31577a,floor:0x6c9bb4,accent:0x9ce5ff},
