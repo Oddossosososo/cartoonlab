@@ -90,7 +90,7 @@
     }
   }
   function projectSnapshot(){
-    return {version:1,title:state.title,character:state.character,scenes:state.scenes,selected:state.selected,elapsed:state.elapsed,vip:state.vip,voiceSpeed:state.voiceSpeed};
+    return {version:1,title:state.title,character:state.character,scenes:state.scenes,selected:state.selected,elapsed:state.elapsed,vip:state.vip,voiceSpeed:state.voiceSpeed,voiceName:state.voiceName};
   }
   function saveProject(){
     try{
@@ -802,6 +802,7 @@
       state.elapsed=Math.max(0,Math.min(Number(project.elapsed)||0,totalDuration()));
       if(typeof project.vip==='boolean')state.vip=project.vip;
       if(Number.isFinite(Number(project.voiceSpeed)))state.voiceSpeed=Number(project.voiceSpeed);
+       if(typeof project.voiceName==='string'&&project.voiceName)state.voiceName=project.voiceName;
       $('projectTitle').textContent=state.title;
       renderTimeline();renderInspector();draw();updateClock();saveProject();
       toast('Imported complete HSL project · '+scenes.length+' scene(s)');
@@ -810,6 +811,8 @@
     const scenes=[];let current=null,years=null;
     for(const line of lines){
       if(line.startsWith('!cartoonlab '))continue;
+      if(line.startsWith('!voice ')){const voice=line.slice(7).trim();if(!/^[a-z0-9_]+$/i.test(voice))throw new Error('Bad voice name: '+voice);state.voiceName=voice;continue;}
+      if(line.startsWith('!tts ')){const raw=line.slice(5).trim();try{state.character.ttsText=JSON.parse(raw);}catch(error){state.character.ttsText=raw;}continue;}
       if(line[0]==='@'){
         const m=line.match(/^@([\d.]+)\s+([a-z-]+)$/i);
         if(!m)throw new Error('Bad scene command: '+line);
