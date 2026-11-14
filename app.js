@@ -41,10 +41,11 @@
     draw();
     let stream=null;
     try{
-      stream=canvas.captureStream(30);
       const memory=Number(navigator.deviceMemory)||4;
       const cores=Number(navigator.hardwareConcurrency)||4;
-      const videoBitsPerSecond=(memory<=2||cores<=2)?2200000:(memory<=4||cores<=4)?3800000:6000000;
+      const previewFps=(memory<=2||cores<=2)?24:(memory<=4||cores<=4)?30:60;
+      stream=canvas.captureStream(previewFps);
+      const videoBitsPerSecond=(memory<=2||cores<=2)?1800000:(memory<=4||cores<=4)?3500000:6500000;
       const candidates=['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'];
       const mimeType=candidates.find(type=>MediaRecorder.isTypeSupported(type))||'';
       const options={videoBitsPerSecond};if(mimeType)options.mimeType=mimeType;
@@ -68,7 +69,7 @@
       };
       recorder.start(250);
       state.playing=true;$('playButton').textContent='Ⅱ';
-      toast('Rendering compressed preview…');
+      toast('Rendering compressed preview at '+previewFps+' FPS…');
       smoothPreviewTimer=setTimeout(()=>{
         smoothPreviewTimer=null;
         if(recorder.state!=='inactive')recorder.stop();
@@ -160,7 +161,7 @@
   document.addEventListener('input',()=>{clearSmoothPreview();scheduleSave();});
   document.addEventListener('change',()=>{clearSmoothPreview();scheduleSave();});
   document.addEventListener('click',e=>{
-    if(!e.target.closest('#smoothPreview,#playButton,#restartButton,#scrubTrack,.scene-card,.nav-item,.inspector-tab'))clearSmoothPreview();
+    if(!e.target.closest('#smoothPreview,#playButton,#restartButton,#scrubTrack,.nav-item,.inspector-tab')&&(!e.target.closest('.scene-card')||e.target.closest('.scene-delete,.scene-resize')))clearSmoothPreview();
     scheduleSave();
   });
   window.addEventListener('beforeunload',saveProject);
@@ -649,6 +650,7 @@
   updateVipButton();
   $('shareCode').onclick=shareProjectCode;
   $('smoothPreview').onclick=renderSmoothPreview;
+  $('sceneTrack').addEventListener('pointerup',()=>clearSmoothPreview());
   smoothVideo.addEventListener('ended',()=>{smoothPreviewActive=true;});
   $('playButton').onclick=()=>{if(smoothPreviewActive)hideSmoothVideo();stopLipSync();state.playing=!state.playing;$('playButton').textContent=state.playing?'Ⅱ':'▶';if(state.elapsed>=totalDuration())state.elapsed=0;};
   $('restartButton').onclick=()=>{if(smoothPreviewActive)hideSmoothVideo();stopLipSync();state.elapsed=0;state.playing=false;$('playButton').textContent='▶';};
