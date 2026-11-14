@@ -23,10 +23,33 @@
   async function shareProjectCode(){
     const code=makeShareCode();
     try{
-      await navigator.clipboard.writeText(code);
+      if(navigator.clipboard && window.isSecureContext){
+        await navigator.clipboard.writeText(code);
+      }else{
+        const field=document.createElement('textarea');
+        field.value=code;
+        field.setAttribute('readonly','');
+        field.style.position='fixed';
+        field.style.opacity='0';
+        document.body.appendChild(field);
+        field.select();
+        const copied=document.execCommand('copy');
+        field.remove();
+        if(!copied)throw new Error('Clipboard copy was blocked');
+      }
       toast('Share code copied! Paste it into ChatGPT for a rating.');
     }catch(error){
-      prompt('Copy your CartoonLab share code and paste it into ChatGPT:',code);
+      const field=document.createElement('textarea');
+      field.value=code;
+      field.setAttribute('readonly','');
+      field.style.position='fixed';
+      field.style.opacity='0';
+      document.body.appendChild(field);
+      field.select();
+      let copied=false;
+      try{copied=document.execCommand('copy');}catch(copyError){}
+      field.remove();
+      toast(copied?'Share code copied!':'Could not access clipboard — please check browser permissions.');
     }
   }
   function saveProject(){
