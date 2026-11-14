@@ -278,9 +278,82 @@
     if(c.speech){ctx.save();ctx.font='700 25px DM Sans';const w=Math.min(460,ctx.measureText(c.speech).width+50);const bx=Math.min(1280-w-25,Math.max(25,x-w/2));const by=170;ctx.fillStyle='#fff';roundRect(ctx,bx,by,w,65,18);ctx.fill();ctx.beginPath();ctx.moveTo(x-12,by+62);ctx.lineTo(x+8,by+62);ctx.lineTo(x,by+82);ctx.fill();ctx.fillStyle='#332642';ctx.textAlign='center';ctx.fillText(c.speech,bx+w/2,by+41);ctx.restore();}
   }
   function roundRect(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath();}
+
+  function housePolygon(points,fill,stroke){
+    ctx.beginPath();ctx.moveTo(points[0][0],points[0][1]);for(let i=1;i<points.length;i++)ctx.lineTo(points[i][0],points[i][1]);ctx.closePath();ctx.fillStyle=fill;ctx.fill();if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=4;ctx.stroke();}
+  }
+  function drawHouseRoom(scene,time){
+    const room=scene.houseRoom||'hallway',walk=scene.cameraMotion==='walkthrough';
+    const step=walk?Math.sin(time*7)*5:0,depth=walk?Math.min(1,time/Math.max(1,scene.duration))*.09:0;
+    const cx=640+step,cy=330+Math.sin(time*3)*2;
+    const palettes={hallway:['#d9c8ad','#b58f70','#80634f'],living:['#eadcc7','#b98e6c','#80604c'],kitchen:['#dce7e6','#9baeb0','#718589'],bedroom:['#e8dce8','#b9a3b9','#856f87'],front:['#b6d9f3','#7aaf79','#527d55'],backyard:['#a9d9f3','#70b978','#4e8c52']};
+    const p=palettes[room]||palettes.hallway;
+    const sky=ctx.createLinearGradient(0,0,0,720);sky.addColorStop(0,room==='front'||room==='backyard'?'#8ec9f0':'#f7ead8');sky.addColorStop(1,p[0]);ctx.fillStyle=sky;ctx.fillRect(0,0,1280,720);
+    if(room==='front'||room==='backyard'){
+      ctx.fillStyle='#8ec8f1';ctx.fillRect(0,0,1280,430);
+      ctx.fillStyle='#6cb66d';ctx.fillRect(0,430,1280,290);
+      for(let i=0;i<7;i++){const x=70+i*190;ctx.fillStyle='#39784d';ctx.beginPath();ctx.arc(x,365+(i%2)*25,58,0,Math.PI*2);ctx.fill();ctx.fillStyle='#6b9d55';ctx.fillRect(x-9,390,18,65);}
+      if(room==='front'){
+        housePolygon([[320,400],[640,170],[960,400]],'#704f48','#4b3434');
+        ctx.fillStyle='#f0dfc7';ctx.fillRect(380,390,520,270);ctx.fillStyle='#d5bda0';ctx.fillRect(585,445,110,215);
+        ctx.fillStyle='#a7d9e8';ctx.fillRect(430,455,100,100);ctx.fillRect(750,455,100,100);
+        ctx.fillStyle='#d9b46f';ctx.beginPath();ctx.arc(675,555,6,0,Math.PI*2);ctx.fill();
+        ctx.fillStyle='#c4a27d';ctx.fillRect(0,655,1280,65);
+      }else{
+        ctx.fillStyle='#f0dfc7';ctx.fillRect(0,500,1280,220);
+        ctx.fillStyle='#8d654b';ctx.fillRect(120,470,1040,28);
+        for(let i=0;i<5;i++){ctx.fillStyle='#4d9959';ctx.beginPath();ctx.arc(180+i*235,420+(i%2)*35,55,0,Math.PI*2);ctx.fill();}
+      }
+      return;
+    }
+    const push=depth*180;
+    // Room shell in one-point perspective.
+    housePolygon([[0,0],[1280,0],[cx+350+push,cy-35],[cx-350-push,cy-35]],'#f4e9da');
+    housePolygon([[0,0],[cx-350-push,cy-35],[cx-350-push,590],[0,720]],'#d8c4aa');
+    housePolygon([[1280,0],[cx+350+push,cy-35],[cx+350+push,590],[1280,720]],'#cbb49a');
+    housePolygon([[0,720],[1280,720],[cx+350+push,cy-35],[cx-350-push,cy-35]],'#9a755b');
+    // Floor boards converge toward the back wall.
+    ctx.strokeStyle='#6e513e55';ctx.lineWidth=3;
+    for(let i=-5;i<=5;i++){ctx.beginPath();ctx.moveTo(cx+i*55,cy-35);ctx.lineTo(640+i*170,720);ctx.stroke();}
+    for(let y=470;y<720;y+=48){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(1280,y);ctx.stroke();}
+    // Back wall, doorway and window.
+    ctx.fillStyle=p[0];ctx.fillRect(cx-350-push,cy-35,700+push*2,250);
+    ctx.fillStyle='#78513e';ctx.fillRect(cx-75,cy+10,150,205);
+    ctx.fillStyle='#d5b18a';ctx.fillRect(cx-62,cy+22,124,193);
+    ctx.fillStyle='#6b4b3c';ctx.fillRect(cx+43,cy+115,8,8);
+    ctx.fillStyle='#9ed2e5';ctx.fillRect(cx-285,cy+15,145,110);
+    ctx.strokeStyle='#fff';ctx.lineWidth=8;ctx.strokeRect(cx-285,cy+15,145,110);ctx.beginPath();ctx.moveTo(cx-212,cy+15);ctx.lineTo(cx-212,cy+125);ctx.moveTo(cx-285,cy+70);ctx.lineTo(cx-140,cy+70);ctx.stroke();
+    // Ceiling light.
+    ctx.strokeStyle='#8d745e';ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(cx,0);ctx.lineTo(cx,cy-25);ctx.stroke();
+    ctx.fillStyle='#ffe8a3';ctx.beginPath();ctx.ellipse(cx,cy-15,48,17,0,0,Math.PI*2);ctx.fill();
+    if(room==='living'){
+      // Sofa and coffee table.
+      ctx.fillStyle='#688c91';roundRect(ctx,150,470,360,135,35);ctx.fill();ctx.fillStyle='#8eb2b3';roundRect(ctx,175,440,310,100,28);ctx.fill();
+      ctx.fillStyle='#76543e';ctx.fillRect(500,600,270,18);ctx.fillRect(530,618,18,50);ctx.fillRect(720,618,18,50);
+      ctx.fillStyle='#d9b36f';ctx.beginPath();ctx.arc(635,580,25,0,Math.PI*2);ctx.fill();
+    }else if(room==='kitchen'){
+      ctx.fillStyle='#f5f0e7';ctx.fillRect(120,470,1040,125);ctx.fillStyle='#8ba3a1';ctx.fillRect(120,470,1040,24);
+      for(let i=0;i<5;i++){ctx.fillStyle='#d8e2df';ctx.fillRect(145+i*205,270,180,170);ctx.strokeStyle='#9aaca9';ctx.strokeRect(145+i*205,270,180,170);}
+      ctx.fillStyle='#454b50';ctx.fillRect(560,475,160,18);ctx.fillStyle='#c4d5d1';ctx.fillRect(800,480,210,105);
+    }else if(room==='bedroom'){
+      ctx.fillStyle='#6c7898';ctx.fillRect(260,470,760,180);ctx.fillStyle='#d8d7e6';ctx.fillRect(290,440,700,95);
+      ctx.fillStyle='#f4b8c9';ctx.fillRect(330,450,210,80);ctx.fillRect(760,450,210,80);
+      ctx.fillStyle='#8c6c87';ctx.fillRect(230,640,820,18);
+    }else{
+      // Hallway runner and framed pictures.
+      ctx.fillStyle='#b45e62';ctx.beginPath();ctx.moveTo(490,720);ctx.lineTo(790,720);ctx.lineTo(690,cy+215);ctx.lineTo(590,cy+215);ctx.closePath();ctx.fill();
+      ctx.fillStyle='#c99d69';ctx.fillRect(80,190,145,180);ctx.fillStyle='#8eb4a5';ctx.fillRect(95,205,115,150);
+      ctx.fillStyle='#c99d69';ctx.fillRect(1050,190,145,180);ctx.fillStyle='#d7b2a2';ctx.fillRect(1065,205,115,150);
+    }
+    // Subtle forward camera movement and footsteps in the floor lighting.
+    if(walk){ctx.fillStyle='#ffffff12';ctx.beginPath();ctx.ellipse(640,690,240+Math.sin(time*7)*12,22,0,0,Math.PI*2);ctx.fill();}
+  }
+
   function draw(){
     const scene=selectedScene(), bg=backgrounds[scene.background]||backgrounds.sunset;
-    const grad=ctx.createLinearGradient(0,0,0,720);grad.addColorStop(0,bg[0]);grad.addColorStop(.65,bg[1]);grad.addColorStop(1,bg[2]);ctx.fillStyle=grad;ctx.fillRect(0,0,1280,720);
+    if(scene.houseRoom){drawHouseRoom(scene,state.elapsed);if(scene.title){ctx.save();ctx.textAlign='center';ctx.fillStyle='#fff';ctx.shadowColor='#0008';ctx.shadowBlur=12;ctx.font='800 42px Space Grotesk';ctx.fillText(scene.title,640,72);ctx.restore();}if(scene.subtitle){ctx.save();ctx.textAlign='center';ctx.fillStyle='#fff';ctx.font='500 20px DM Sans';ctx.fillText(scene.subtitle,640,108);ctx.restore();}}
+    else {const grad=ctx.createLinearGradient(0,0,0,720);grad.addColorStop(0,bg[0]);grad.addColorStop(.65,bg[1]);grad.addColorStop(1,bg[2]);ctx.fillStyle=grad;ctx.fillRect(0,0,1280,720);}
+    if(scene.houseRoom){if(scene.counterEnabled){const local=currentTime().local;const value=(Number(scene.counterStart)||0)+Math.floor(local/Math.max(.25,Number(scene.counterInterval)||1))*(Number(scene.counterStep)||0);ctx.save();ctx.font='800 25px Space Grotesk';ctx.fillStyle='#171326dd';roundRect(ctx,1080,22,175,52,14);ctx.fill();ctx.fillStyle='#fff';ctx.textAlign='center';ctx.fillText((scene.counterLabel||'DAY')+' '+value,1167,56);ctx.restore();}return;}
     const t=state.elapsed, camera=scene.cameraMotion||'none';
     let zoom=1,panX=0,panY=0,shakeX=0,shakeY=0;
     if(camera==='zoom-in')zoom=1+((Math.sin(t*1.1)+1)/2)*.12;
@@ -422,8 +495,9 @@
       html='<div class="inspector-section"><div class="section-title">SCENE SETTINGS</div>'+field('Scene name','sceneName',s.name)+
       '<label class="field"><span>Background</span><select id="sceneBg">'+Object.keys(backgrounds).map(k=>'<option value="'+k+'" '+(s.background===k?'selected':'')+'>'+k[0].toUpperCase()+k.slice(1)+'</option>').join('')+'</select></label>'+
       field('Main title','sceneTitle',s.title)+field('Subtitle','sceneSubtitle',s.subtitle)+
+      (s.houseRoom?'<div class="section-title">HOUSE WALKTHROUGH</div><label class="field"><span>Room</span><select id="houseRoom">'+[['front','Outside / front'],['hallway','Hallway'],['living','Living room'],['kitchen','Kitchen'],['bedroom','Bedroom'],['backyard','Backyard']].map(([v,l])=>'<option value="'+v+'" '+(s.houseRoom===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>':'')+
       '<div class="section-title">CHARACTER MOVEMENT</div><label class="field"><span>Movement</span><select id="characterMotion">'+[['bounce','Bounce'],['float','Float'],['walk','Walk'],['run','Run'],['jump','Jump'],['wave','Wave'],['idle','Idle']].map(([v,l])=>'<option value="'+v+'" '+((s.characterMotion||({bounce:'bounce',float:'float',still:'idle'}[s.motion]||'bounce'))===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>'+
-      '<div class="section-title">CAMERA MOVEMENT</div><label class="field"><span>Camera</span><select id="cameraMotion">'+[['none','Static'],['pan-left','Pan left'],['pan-right','Pan right'],['pan-up','Pan up'],['zoom-in','Zoom in'],['zoom-out','Zoom out'],['shake','Shake']].map(([v,l])=>'<option value="'+v+'" '+((s.cameraMotion||'none')===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>'+
+      '<div class="section-title">CAMERA MOVEMENT</div><label class="field"><span>Camera</span><select id="cameraMotion">'+[['none','Static'],['walkthrough','Walk through'],['pan-left','Pan left'],['pan-right','Pan right'],['pan-up','Pan up'],['zoom-in','Zoom in'],['zoom-out','Zoom out'],['shake','Shake']].map(([v,l])=>'<option value="'+v+'" '+((s.cameraMotion||'none')===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>'+
       '<div class="section-title">CORNER COUNTER</div><label class="field"><span><input id="counterEnabled" type="checkbox" '+(s.counterEnabled?'checked':'')+'> Show counter</span></label>'+
       field('Counter label (e.g. DAY)','counterLabel',s.counterLabel||'DAY')+field('Starting number','counterStart',s.counterStart??1,'number')+
       field('Increase by','counterStep',s.counterStep??1,'number')+field('Unit (e.g. DB)','counterUnit',s.counterUnit||'')+
@@ -446,7 +520,7 @@
     const bind=(id,fn,event='input')=>{const el=$(id);if(el)el.addEventListener(event,()=>fn(el.value));};
     bind('charName',v=>state.character.name=v);bind('speechText',v=>{state.character.speech=v;state.voiceBuffer=null;state.voiceText='';});bind('charColor',v=>state.character.color=v);bind('charSize',v=>state.character.size=+v);bind('charX',v=>state.character.x=+v);
     bind('sceneName',v=>selectedScene().name=v);bind('sceneBg',v=>selectedScene().background=v,'change');bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedScene().subtitle=v);bind('sceneMotion',v=>selectedScene().motion=v,'change');
-    bind('characterMotion',v=>selectedScene().characterMotion=v,'change');bind('cameraMotion',v=>selectedScene().cameraMotion=v,'change');bind('objectMotion',v=>selectedScene().objectMotion=v,'change');
+    bind('characterMotion',v=>selectedScene().characterMotion=v,'change');bind('houseRoom',v=>selectedScene().houseRoom=v,'change');bind('cameraMotion',v=>selectedScene().cameraMotion=v,'change');bind('objectMotion',v=>selectedScene().objectMotion=v,'change');
     bind('counterLabel',v=>selectedScene().counterLabel=v);bind('counterStart',v=>selectedScene().counterStart=Number(v)||0);bind('counterStep',v=>selectedScene().counterStep=Number(v)||0);bind('counterUnit',v=>selectedScene().counterUnit=v);
     bind('counterInterval',v=>selectedScene().counterInterval=Number(v),'change');bind('counterCorner',v=>selectedScene().counterCorner=v,'change');
     if($('counterEnabled'))$('counterEnabled').onchange=e=>selectedScene().counterEnabled=e.target.checked;
@@ -462,7 +536,7 @@
   function switchTab(tab){state.tab=tab;document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));renderInspector();}
   document.querySelectorAll('.nav-item,.inspector-tab').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
   function addScene(scene){state.scenes.push(scene||{name:'New scene',duration:5,background:'sky',title:'',subtitle:'',motion:'bounce'});state.selected=state.scenes.length-1;state.elapsed=state.scenes.slice(0,-1).reduce((a,x)=>a+x.duration,0);renderTimeline();renderInspector();toast('Scene added');}
-  $('addScene').onclick=()=>addScene();$('addIntro').onclick=()=>addScene({name:'Animated intro',duration:2,background:'sunset',title:'WELCOME!',subtitle:'The story is about to begin',motion:'bounce'});$('addDialogue').onclick=()=>{state.character.speech='Wait... WHAT?!';state.character.expression='surprised';addScene({name:'Big reaction',duration:5,background:'candy',title:'PLOT TWIST!',subtitle:'Nobody saw that coming',motion:'bounce'});switchTab('characters');};
+  $('addScene').onclick=()=>addScene();$('addIntro').onclick=()=>addScene({name:'Animated intro',duration:2,background:'sunset',title:'WELCOME!',subtitle:'The story is about to begin',motion:'bounce'});$('addHouseTour').onclick=()=>{const rooms=[['front','Outside the house','Welcome home'],['hallway','Walk inside','Let’s take a look around'],['living','Living room','A cosy place to relax'],['kitchen','Kitchen','The heart of the home'],['bedroom','Bedroom','Time to unwind'],['backyard','Backyard','And a little outdoor space']];state.scenes=rooms.map(([houseRoom,name,subtitle],i)=>({name,duration:4,background:'sky',title:'',subtitle,houseRoom,cameraMotion:i===0?'none':'walkthrough',counterEnabled:false,objectMotion:'none'}));state.selected=0;state.elapsed=0;state.title='House walkthrough';$('projectTitle').textContent=state.title;renderTimeline();renderInspector();switchTab('scenes');toast('House walkthrough created · 6 scenes');};$('addDialogue').onclick=()=>{state.character.speech='Wait... WHAT?!';state.character.expression='surprised';addScene({name:'Big reaction',duration:5,background:'candy',title:'PLOT TWIST!',subtitle:'Nobody saw that coming',motion:'bounce'});switchTab('characters');};
   const vipButton=$('vipToggle');
   function updateVipButton(){if(vipButton){vipButton.textContent=state.vip?'✦ VIP ON':'✦ VIP';vipButton.classList.toggle('vip-active',state.vip);}}
   if(vipButton)vipButton.onclick=()=>{state.vip=!state.vip;localStorage.setItem('cartoonlab-vip',String(state.vip));updateVipButton();toast(state.vip?'VIP mode enabled · watermark hidden':'VIP mode disabled · watermark restored');};
