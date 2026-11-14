@@ -533,16 +533,47 @@
     });
   }
 
+  const backgroundImageCache=new Map();
+  function paintSceneBackground(scene,alpha=1){
+    if(!scene)return;
+    ctx.save();ctx.globalAlpha=Math.max(0,Math.min(1,alpha));
+    if(scene.backgroundImage){
+      let image=backgroundImageCache.get(scene.backgroundImage);
+      if(!image){image=new Image();backgroundImageCache.set(scene.backgroundImage,image);image.onload=()=>draw();image.src=scene.backgroundImage;}
+      if(image.complete&&image.naturalWidth){
+        const scale=Math.max(1280/image.naturalWidth,720/image.naturalHeight);
+        const w=image.naturalWidth*scale,h=image.naturalHeight*scale;
+        ctx.drawImage(image,(1280-w)/2,(720-h)/2,w,h);
+      }else{ctx.fillStyle='#171525';ctx.fillRect(0,0,1280,720);}
+    }else if(scene.backgroundType==='solid'){
+      ctx.fillStyle=scene.backgroundColor||'#26304b';ctx.fillRect(0,0,1280,720);
+    }else{
+      const palette=backgrounds[scene.background]||backgrounds.sunset;
+      const top=scene.backgroundType==='gradient'?(scene.backgroundColor||palette[0]):palette[0];
+      const middle=scene.backgroundType==='gradient'?(scene.backgroundColor2||palette[1]):palette[1];
+      const bottom=scene.backgroundType==='gradient'?(scene.backgroundColor2||palette[2]):palette[2];
+      const grad=ctx.createLinearGradient(0,0,0,720);grad.addColorStop(0,top);grad.addColorStop(.65,middle);grad.addColorStop(1,bottom);
+      ctx.fillStyle=grad;ctx.fillRect(0,0,1280,720);
+    }
+    ctx.restore();
+  }
   function draw(){
     const activeTime=currentTime();
     const scene=state.scenes[activeTime.index]||selectedScene(), bg=backgrounds[scene.background]||backgrounds.sunset;
-    // House walkthrough scenes keep their dedicated room artwork as the primary background.
-    // The 3D landscape renderer is only used for ordinary scenes / fallback environments.
-    const has3D=scene.background!=='withering-forest'&&!!(window.CartoonLab3D&&window.CartoonLab3D.ready&&window.CartoonLab3D.render(state.elapsed,scene));
+    const hasCustomBackground=!!scene.backgroundImage||scene.backgroundType==='solid'||scene.backgroundType==='gradient';
+    // Custom images and colours take priority over the procedural 3D environment.
+    const has3D=!hasCustomBackground&&scene.background!=='withering-forest'&&!!(window.CartoonLab3D&&window.CartoonLab3D.ready&&window.CartoonLab3D.render(state.elapsed,scene));
     if(has3D&&window.CartoonLab3D.canvas&&(scene.layers?.background!==false))ctx.drawImage(window.CartoonLab3D.canvas,0,0,1280,720);
     const layers=scene.layers||{};
-    if(scene.houseRoom){if(layers.background!==false&&!has3D)drawHouseRoom(scene,state.elapsed);drawMeshObjects();if(layers.character!==false){drawCharacter(studioCharacter(scene,activeTime.local),state.elapsed,scene);state.extraCharacters.forEach(c=>drawCharacter(c,state.elapsed,scene));}if(scene.title){ctx.save();ctx.textAlign='center';ctx.fillStyle='#fff';ctx.shadowColor='#0008';ctx.shadowBlur=12;ctx.font='800 42px Space Grotesk';ctx.fillText(scene.title,640,72);ctx.restore();}if(scene.subtitle){ctx.save();ctx.textAlign='center';ctx.fillStyle='#fff';ctx.font='500 20px DM Sans';ctx.fillText(scene.subtitle,640,108);ctx.restore();}}
-    else if(layers.background!==false&&!has3D){if(scene.background==='withering-forest')drawWitheringForest(scene,activeTime.local);else{const grad=ctx.createLinearGradient(0,0,0,720);grad.addColorStop(0,bg[0]);grad.addColorStop(.65,bg[1]);grad.addColorStop(1,bg[2]);ctx.fillStyle=grad;ctx.fillRect(0,0,1280,720);}}
+    if(layers.background!==false&&!has3D){
+      const transition=Math.max(0,Math.min(3,Number(scene.transitionDuration??0.8)||0));
+      if(activeTime.index>0&&transition>0&&activeTime.local<transition){
+        const progress=Math.max(0,Math.min(1,activeTime.local/transition));
+        paintSceneBackground(state.scenes[activeTime.index-1],1-progress);
+        paintSceneBackground(scene,progress);
+      }else paintSceneBackground(scene,1);
+    }
+    if(scene.houseRoom){drawMeshObjects();if(layers.character!==false){drawCharacter(studioCharacter(scene,activeTime.local),state.elapsed,scene);state.extraCharacters.forEach(c=>drawCharacter(c,state.elapsed,scene));}if(scene.title){ctx.save();ctx.textAlign='center';ctx.fillStyle='#fff';ctx.shadowColor='#0008';ctx.shadowBlur=12;ctx.font='800 42px Space Grotesk';ctx.fillText(scene.title,640,72);ctx.restore();}if(scene.subtitle){ctx.save();ctx.textAlign='center';ctx.fillStyle='#fff';ctx.font='500 20px DM Sans';ctx.fillText(scene.subtitle,640,108);ctx.restore();}}
     if(scene.houseRoom){if(layers.counter!==false)drawCounter(scene,activeTime.local);return;}
     const t=state.elapsed, camera=scene.cameraMotion||'none';
     let zoom=1,panX=0,panY=0,shakeX=0,shakeY=0;
@@ -698,7 +729,12 @@
       '</div><div class="blender-footer">LOCAL MESH EDITOR · PROJECT-SAVED · HSL READY</div></div>';
     } else if(tab==='scenes'){
       html='<div class="inspector-section"><div class="section-title">SCENE SETTINGS</div>'+field('Scene name','sceneName',s.name)+
-      '<label class="field"><span>Background</span><select id="sceneBg">'+Object.keys(backgrounds).map(k=>'<option value="'+k+'" '+(s.background===k?'selected':'')+'>'+k[0].toUpperCase()+k.slice(1)+'</option>').join('')+'<option value="withering-forest" '+(s.background==='withering-forest'?'selected':'')+'>Withering forest · changes over time</option></select></label>'+
+      '<label class="field"><span>Preset background</span><select id="sceneBg">'+Object.keys(backgrounds).map(k=>'<option value="'+k+'" '+(s.background===k?'selected':'')+'>'+k[0].toUpperCase()+k.slice(1)+'</option>').join('')+'<option value="withering-forest" '+(s.background==='withering-forest'?'selected':'')+'>Withering forest · changes over time</option></select></label>'+
+      '<div class="custom-background-editor"><div class="section-title">CUSTOM BACKGROUND</div><label class="field"><span>Background type</span><select id="backgroundType"><option value="preset" '+(!s.backgroundType||s.backgroundType==='preset'?'selected':'')+'>Preset</option><option value="solid" '+(s.backgroundType==='solid'?'selected':'')+'>Solid colour</option><option value="gradient" '+(s.backgroundType==='gradient'?'selected':'')+'>Gradient</option><option value="image" '+(s.backgroundType==='image'?'selected':'')+'>Uploaded image</option></select></label>'+
+      '<div class="field-row">'+field('Colour 1','backgroundColor',s.backgroundColor||'#26304b','color')+field('Colour 2','backgroundColor2',s.backgroundColor2||'#8b78bd','color')+'</div>'+
+      '<label class="full-button background-upload">＋ Upload background image<input id="backgroundFile" type="file" accept="image/*" hidden></label>'+
+      (s.backgroundImage?'<div class="background-image-preview"><img src="'+s.backgroundImage+'" alt="Custom background preview"><button class="choice" id="removeBackgroundImage" type="button">Remove image</button></div>':'<p class="muted-copy">Upload an image, or create a custom solid colour or gradient. Images are compressed before saving.</p>')+
+      '<label class="field"><span>Scene transition · '+Number(s.transitionDuration??0.8).toFixed(1)+'s</span><input id="transitionDuration" type="range" min="0" max="3" step="0.1" value="'+Number(s.transitionDuration??0.8)+'"></label><button class="full-button" id="applyBackgroundAll" type="button">Apply this background to every scene</button></div>'+
       field('Main title','sceneTitle',s.title)+field('Subtitle','sceneSubtitle',s.subtitle)+
       (s.houseRoom?'<div class="section-title">HOUSE WALKTHROUGH</div><label class="field"><span>Room</span><select id="houseRoom">'+[['front','Outside / front'],['hallway','Hallway'],['living','Living room'],['kitchen','Kitchen'],['bedroom','Bedroom'],['backyard','Backyard']].map(([v,l])=>'<option value="'+v+'" '+(s.houseRoom===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>':'')+
       '<div class="section-title">CHARACTER MOVEMENT</div><label class="field"><span>Movement</span><select id="characterMotion">'+[['bounce','Bounce'],['float','Float'],['walk','Walk'],['run','Run'],['jump','Jump'],['wave','Wave'],['idle','Idle']].map(([v,l])=>'<option value="'+v+'" '+((s.characterMotion||({bounce:'bounce',float:'float',still:'idle'}[s.motion]||'bounce'))===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>'+
@@ -821,7 +857,26 @@ if($('addMesh'))$('addMesh').onclick=()=>{if(state.meshObjects.length>=100){toas
     document.querySelectorAll('[data-remove-mesh]').forEach(b=>b.onclick=()=>{state.meshObjects.splice(Number(b.dataset.removeMesh),1);renderInspector();draw();scheduleSave();});
     bind('speechText',v=>state.character.speech=v);bind('ttsText',v=>{state.character.ttsText=v;state.voiceBuffer=null;state.voiceText='';});bind('charColor',v=>state.character.color=v);bind('charSize',v=>{const n=Number(v);if(Number.isFinite(n)&&n>0)state.character.size=n;});bind('charX',v=>{const n=Number(v);if(Number.isFinite(n))state.character.x=n;});
     bind('sceneName',v=>selectedScene().name=v);
-    if($('sceneBg'))$('sceneBg').onchange=e=>{const scene=selectedScene();scene.background=e.target.value;if(e.target.value==='withering-forest'){scene.title='YES, ALL LIFE.';scene.subtitle='Trees are life.';}draw();scheduleSave();};
+    if($('sceneBg'))$('sceneBg').onchange=e=>{const scene=selectedScene();scene.background=e.target.value;scene.backgroundType='preset';scene.backgroundImage='';if(e.target.value==='withering-forest'){scene.title='YES, ALL LIFE.';scene.subtitle='Trees are life.';}draw();scheduleSave();};
+    if($('backgroundType'))$('backgroundType').onchange=e=>{const scene=selectedScene();scene.backgroundType=e.target.value;if(e.target.value!=='image')scene.backgroundImage='';draw();scheduleSave();renderInspector();};
+    ['backgroundColor','backgroundColor2'].forEach((id,i)=>{const el=$(id);if(el)el.oninput=()=>{const scene=selectedScene();scene.backgroundType='gradient';scene[i?'backgroundColor2':'backgroundColor']=el.value;draw();scheduleSave();};});
+    if($('backgroundFile'))$('backgroundFile').onchange=async e=>{
+      const file=e.target.files?.[0];if(!file)return;
+      if(!file.type.startsWith('image/')){toast('Choose an image file');return;}
+      try{
+        const source=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error('Image could not be read'));reader.readAsDataURL(file);});
+        const image=await new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>resolve(img);img.onerror=()=>reject(new Error('Image could not be decoded'));img.src=source;});
+        const scale=Math.min(1,1280/image.naturalWidth,720/image.naturalHeight);
+        const canvasOut=document.createElement('canvas');canvasOut.width=Math.max(1,Math.round(image.naturalWidth*scale));canvasOut.height=Math.max(1,Math.round(image.naturalHeight*scale));
+        canvasOut.getContext('2d').drawImage(image,0,0,canvasOut.width,canvasOut.height);
+        const scene=selectedScene();scene.backgroundImage=canvasOut.toDataURL('image/jpeg',0.82);scene.backgroundType='image';
+        backgroundImageCache.delete(scene.backgroundImage);renderInspector();draw();scheduleSave();toast('Custom background added');
+      }catch(error){console.error(error);toast('Background upload failed: '+error.message);}
+      e.target.value='';
+    };
+    if($('removeBackgroundImage'))$('removeBackgroundImage').onclick=()=>{const scene=selectedScene();scene.backgroundImage='';scene.backgroundType='gradient';renderInspector();draw();scheduleSave();toast('Custom image removed');};
+    if($('transitionDuration'))$('transitionDuration').oninput=e=>{selectedScene().transitionDuration=Number(e.target.value);const label=e.target.closest('label')?.querySelector('span');if(label)label.textContent='Scene transition · '+Number(e.target.value).toFixed(1)+'s';draw();scheduleSave();};
+    if($('applyBackgroundAll'))$('applyBackgroundAll').onclick=()=>{const source=selectedScene();state.scenes.forEach(scene=>{scene.background=source.background;scene.backgroundType=source.backgroundType;scene.backgroundColor=source.backgroundColor;scene.backgroundColor2=source.backgroundColor2;scene.backgroundImage=source.backgroundImage;});renderTimeline();draw();scheduleSave();toast('Background applied to all scenes');};
 bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedScene().subtitle=v);bind('sceneMotion',v=>selectedScene().motion=v,'change');
     bind('characterMotion',v=>selectedScene().characterMotion=v,'change');bind('houseRoom',v=>selectedScene().houseRoom=v,'change');bind('cameraMotion',v=>selectedScene().cameraMotion=v,'change');bind('objectMotion',v=>selectedScene().objectMotion=v,'change');
     bind('counterLabel',v=>selectedScene().counterLabel=v);bind('counterStart',v=>{const n=Number(v);if(Number.isFinite(n))selectedScene().counterStart=n;});bind('counterStep',v=>{const n=Number(v);if(Number.isFinite(n))selectedScene().counterStep=n;});bind('counterUnit',v=>selectedScene().counterUnit=v);
@@ -995,7 +1050,7 @@ bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedSc
     const bytes=Uint8Array.from(binary,c=>c.charCodeAt(0));
     return JSON.parse(new TextDecoder().decode(bytes));
   }
-  const HSL4_KEYS={version:'z',title:'t',character:'c',extraCharacters:'x',meshObjects:'m',scenes:'s',selected:'i',elapsed:'e',vip:'v',voiceSpeed:'w',voiceName:'n',musicTrack:'mt',musicVolume:'mv',name:'a',duration:'d',background:'b',subtitle:'u',motion:'o',characterMotion:'q',x:'X',y:'Y',size:'S',color:'C',expression:'E',speech:'p',ttsText:'T',counterEnabled:'ce',counterMode:'cm',counterStart:'cs',counterEnd:'cn',counterCorner:'cc',layers:'l',keyframes:'k',vertices:'V',faces:'F',type:'g',id:'I',scale:'Z',rotationX:'rx',rotationY:'ry',rotationZ:'rz',visible:'vi',houseRoom:'hr',cameraMotion:'ca',cameraZoom:'cz',cameraX:'cx',cameraY:'cy',objectMotion:'om',rig:'r',armLeft:'al',armRight:'ar',legLeft:'ll',legRight:'lr'};
+  const HSL4_KEYS={version:'z',title:'t',character:'c',extraCharacters:'x',meshObjects:'m',scenes:'s',selected:'i',elapsed:'e',vip:'v',voiceSpeed:'w',voiceName:'n',musicTrack:'mt',musicVolume:'mv',name:'a',duration:'d',background:'b',backgroundType:'bt',backgroundColor:'bc',backgroundColor2:'bd',backgroundImage:'bi',transitionDuration:'td',subtitle:'u',motion:'o',characterMotion:'q',x:'X',y:'Y',size:'S',color:'C',expression:'E',speech:'p',ttsText:'T',counterEnabled:'ce',counterMode:'cm',counterStart:'cs',counterEnd:'cn',counterCorner:'cc',layers:'l',keyframes:'k',vertices:'V',faces:'F',type:'g',id:'I',scale:'Z',rotationX:'rx',rotationY:'ry',rotationZ:'rz',visible:'vi',houseRoom:'hr',cameraMotion:'ca',cameraZoom:'cz',cameraX:'cx',cameraY:'cy',objectMotion:'om',rig:'r',armLeft:'al',armRight:'ar',legLeft:'ll',legRight:'lr'};
   const HSL4_REVERSE=Object.fromEntries(Object.entries(HSL4_KEYS).map(([key,short])=>[short,key]));
   function compactHslValue(value){
     if(Array.isArray(value))return value.map(compactHslValue);
