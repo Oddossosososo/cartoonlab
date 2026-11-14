@@ -393,4 +393,9 @@
     const recorder=new MediaRecorder(stream,{mimeType:mime});const chunks=[];recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};recorder.onstop=()=>{const blob=new Blob(chunks,{type:mime});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=(state.title||'cartoonlab-story').replace(/[^a-z0-9-_]+/gi,'-')+'.webm';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);stream.getTracks().forEach(track=>track.stop());state.playing=false;state.elapsed=0;$('playButton').textContent='▶';toast(state.voiceBuffer?'Video exported with voice audio!':'Video ready (generate dialogue first to include voice audio).');};recorder.start();state.playing=true;$('playButton').textContent='Ⅱ';toast(state.voiceBuffer?'Recording animation + voice…':'Recording animation…');setTimeout(()=>{if(recorder.state!=='inactive')recorder.stop();},totalDuration()*1000);
   };
   renderTimeline();renderInspector();requestAnimationFrame(frame);
+  // Download and cache the voice model automatically after the editor is ready.
+  // This is a one-time first-visit download; the browser/runtime cache handles later visits.
+  const preloadKokoro=()=>loadKokoro().catch(error=>console.warn('Kokoro background preload failed; it will retry when narration is used:',error));
+  if(typeof window.requestIdleCallback==='function')window.requestIdleCallback(preloadKokoro,{timeout:4000});
+  else setTimeout(preloadKokoro,1800);
 })();
