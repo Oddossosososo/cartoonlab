@@ -4,7 +4,7 @@
   const $ = (id) => document.getElementById(id);
   const state = {
     title: 'Untitled story', tab: 'characters', selected: 0, playing: false, vip: localStorage.getItem('cartoonlab-vip') === 'true',
-    elapsed: 0, lastFrame: 0, audioUrl: null, audioName: '', kokoro: null, kokoroLoading: false, kokoroPromise: null, voiceBuffer: null, voiceText: '', voiceName: 'af_heart', voiceSpeed: 1, voiceBufferSpeed: 1, audioContext: null, voiceSource: null, analyser: null, analyserData: null, lipSync: { active:false, startedAt:0, utterance:null },
+    elapsed: 0, lastFrame: 0, audioUrl: null, audioName: '', kokoro: null, kokoroLoading: false, kokoroPromise: null, voiceBuffer: null, voiceText: '', voiceName: 'af_heart', voiceSpeed: 1, voiceBufferSpeed: 1, ttsBackendUrl: localStorage.getItem('cartoonlab-rust-tts-url') || '', audioContext: null, voiceSource: null, analyser: null, analyserData: null, lipSync: { active:false, startedAt:0, utterance:null },
     character: { name: 'Bloop', color: '#ff9cba', expression: 'happy', x: 640, size: 1, speech: 'What if...?', ttsText: 'What if...?' },
     scenes: [{ name: 'Opening scene', duration: 6, background: 'sunset', title: 'WHAT IF...?', subtitle: 'A tiny idea. A BIG adventure.', motion: 'bounce' }]
   };
@@ -90,7 +90,7 @@
     }
   }
   function projectSnapshot(){
-    return {version:1,title:state.title,character:state.character,scenes:state.scenes,selected:state.selected,elapsed:state.elapsed,vip:state.vip,voiceSpeed:state.voiceSpeed};
+    return {version:1,title:state.title,character:state.character,scenes:state.scenes,selected:state.selected,elapsed:state.elapsed,vip:state.vip,voiceSpeed:state.voiceSpeed,ttsBackendUrl:state.ttsBackendUrl};
   }
   function makeShareCode(){
     const payload={...projectSnapshot(),audioTrackName:state.audioName||'',sharedAt:new Date().toISOString()};
@@ -162,6 +162,7 @@
       state.elapsed=Math.max(0,Math.min(Number(saved.elapsed)||0,state.scenes.reduce((n,s)=>n+Number(s.duration||0),0)));
       if(typeof saved.vip==='boolean')state.vip=saved.vip;
       if(Number.isFinite(Number(saved.voiceSpeed)))state.voiceSpeed=Number(saved.voiceSpeed);
+      if(typeof saved.ttsBackendUrl==='string')state.ttsBackendUrl=saved.ttsBackendUrl;
       $('projectTitle').textContent=state.title;
     }catch(error){console.warn('CartoonLab could not restore the saved project:',error);}
   }
@@ -270,6 +271,16 @@
   }
   async function generateVoice(){
     if(!String(state.character.ttsText||'').trim()){toast('Add TTS text first');return null;}
+    const rustEndpoint=String(state.ttsBackendUrl||'').trim().replace(/\/$/,'');
+    if(rustEndpoint){
+      const text=String(state.character.ttsText||'').trim(),voice=state.voiceName,speed=Number(state.voiceSpeed)||1;
+      if(state.voiceBuffer&&state.voiceText===text&&state.voiceName===voice&&state.voiceBufferSpeed===speed)return state.voiceBuffer;
+      const response=await fetch(rustEndpoint+'/v1/audio/speech',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({input:text,voice,speed})});
+      if(!response.ok)throw new Error('Rust TTS server returned '+response.status+': '+(await response.text()).slice(0,180));
+      const ac=audioContext();const buffer=await ac.decodeAudioData(await response.arrayBuffer());
+      if(text!==String(state.character.ttsText||'').trim()||voice!==state.voiceName||speed!==state.voiceSpeed)return generateVoice();
+      state.voiceBuffer=buffer;state.voiceText=text;state.voiceBufferSpeed=speed;return buffer;
+    }
     // Wait for the model first, then read the latest editor values. If the user
     // changes text, voice, or speed while synthesis is running, regenerate once
     // with the newest settings instead of playing stale narration.
@@ -470,14 +481,15 @@
     ctx.restore();
   }
   function draw(){
-    const scene=selectedScene(), bg=backgrounds[scene.background]||backgrounds.sunset;
+    const activeTime=currentTime();
+    const scene=state.scenes[activeTime.index]||selectedScene(), bg=backgrounds[scene.background]||backgrounds.sunset;
     // House walkthrough scenes keep their dedicated room artwork as the primary background.
     // The 3D landscape renderer is only used for ordinary scenes / fallback environments.
     const has3D=!!(window.CartoonLab3D&&window.CartoonLab3D.ready&&window.CartoonLab3D.render(state.elapsed,scene));
     if(has3D&&window.CartoonLab3D.canvas)ctx.drawImage(window.CartoonLab3D.canvas,0,0,1280,720);
     if(scene.houseRoom){if(!has3D)drawHouseRoom(scene,state.elapsed);drawCharacter(state.character,state.elapsed,scene);if(scene.title){ctx.save();ctx.textAlign='center';ctx.fillStyle='#fff';ctx.shadowColor='#0008';ctx.shadowBlur=12;ctx.font='800 42px Space Grotesk';ctx.fillText(scene.title,640,72);ctx.restore();}if(scene.subtitle){ctx.save();ctx.textAlign='center';ctx.fillStyle='#fff';ctx.font='500 20px DM Sans';ctx.fillText(scene.subtitle,640,108);ctx.restore();}}
     else if(!has3D){const grad=ctx.createLinearGradient(0,0,0,720);grad.addColorStop(0,bg[0]);grad.addColorStop(.65,bg[1]);grad.addColorStop(1,bg[2]);ctx.fillStyle=grad;ctx.fillRect(0,0,1280,720);}
-    if(scene.houseRoom){drawCounter(scene,currentTime().local);return;}
+    if(scene.houseRoom){drawCounter(scene,activeTime.local);return;}
     const t=state.elapsed, camera=scene.cameraMotion||'none';
     let zoom=1,panX=0,panY=0,shakeX=0,shakeY=0;
     if(camera==='zoom-in')zoom=1+((Math.sin(t*1.1)+1)/2)*.12;
@@ -506,7 +518,7 @@
     if(scene.subtitle){ctx.textAlign='center';ctx.fillStyle='#fff';ctx.globalAlpha=.85;ctx.font='500 22px DM Sans';ctx.fillText(scene.subtitle,640,137);ctx.globalAlpha=1;}
     drawCharacter(state.character,state.elapsed,scene);
     ctx.restore();
-    drawCounter(scene,currentTime().local);
+    drawCounter(scene,activeTime.local);
     if(!state.vip){ctx.textAlign='left';ctx.fillStyle='#ffffff88';ctx.font='600 13px DM Sans';ctx.fillText('CARTOONLAB',35,680);}
   }
   function updateClock(){
@@ -603,11 +615,11 @@
     const tab=state.tab, c=state.character, s=selectedScene();document.querySelectorAll('.inspector-tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
     let html='';
     if(tab==='characters'){
-      html='<div class="inspector-section"><div class="section-title">MAIN CHARACTER</div>'+field('Character name','charName',c.name)+'<div class="section-title">SPEECH BUBBLE · ON-SCREEN ONLY</div>'+field('Bubble text','speechText',c.speech)+'<p class="muted-copy">This text appears in the scene. It does not control the voice.</p><div class="section-title">AI TEXT-TO-SPEECH · AUDIO ONLY</div>'+field('Text to speak','ttsText',c.ttsText||'')+'<label class="field"><span>Storytelling voice</span><select id="voiceChoice"><option value="af_heart">Heart · warm narrator</option><option value="af_bella">Bella · bright</option><option value="af_nicole">Nicole · gentle</option><option value="am_adam">Adam · deeper</option><option value="am_michael">Michael · friendly</option><option value="bf_emma">Emma · British</option><option value="bm_george">George · British deep</option></select></label><label class="field"><span>Speaking speed · <b id="voiceSpeedValue">'+state.voiceSpeed.toFixed(1)+'×</b></span><input id="voiceSpeed" type="range" min="0.01" max="10" step="0.01" value="'+state.voiceSpeed+'"></label><button class="full-button" id="speakDialogue">▶ Generate + speak</button><p class="muted-copy">Kokoro AI voice runs on this device. First use downloads the model (about 80 MB); later uses are cached. Mouth movement follows the audio volume.</p></div>'+
+      html='<div class="inspector-section"><div class="section-title">MAIN CHARACTER</div>'+field('Character name','charName',c.name)+'<div class="section-title">SPEECH BUBBLE · ON-SCREEN ONLY</div>'+field('Bubble text','speechText',c.speech)+'<p class="muted-copy">This text appears in the scene. It does not control the voice.</p><div class="section-title">AI TEXT-TO-SPEECH · AUDIO ONLY</div>'+field('Text to speak','ttsText',c.ttsText||'')+'<label class="field"><span>Storytelling voice</span><select id="voiceChoice"><option value="af_heart">Heart · warm narrator</option><option value="af_bella">Bella · bright</option><option value="af_nicole">Nicole · gentle</option><option value="am_adam">Adam · deeper</option><option value="am_michael">Michael · friendly</option><option value="bf_emma">Emma · British</option><option value="bm_george">George · British deep</option></select></label><label class="field"><span>Speaking speed (×)</span><input id="voiceSpeed" type="number" step="any" inputmode="decimal" value="'+state.voiceSpeed+'"></label><label class="field"><span>Rust TTS server URL</span><input id="ttsBackendUrl" type="url" placeholder="https://your-rust-server.example" value="'+escapeHtml(state.ttsBackendUrl)+'"></label><button class="full-button" id="speakDialogue">▶ Generate + speak</button><p class="muted-copy">Uses the Rust Kokoro server when configured; otherwise Kokoro runs locally. Mouth movement follows the audio volume.</p></div>'+
       '<div class="inspector-section"><div class="section-title">LOOK & FEEL</div>'+field('Character colour','charColor',c.color,'color')+
       '<label class="field"><span>Expression</span><div class="choice-row">'+['happy','surprised','curious','sad','angry','neutral'].map(x=>'<button class="choice '+(c.expression===x?'active':'')+'" data-expression="'+x+'">'+x[0].toUpperCase()+x.slice(1)+'</button>').join('')+'</div></label>'+
-      '<label class="field"><span>Character size</span><input id="charSize" type="range" min="0.01" max="20" step="0.01" value="'+c.size+'"></label>'+
-      '<label class="field"><span>Stage position</span><input id="charX" type="range" min="-100000" max="100000" step="1" value="'+c.x+'"></label></div>'+
+      '<label class="field"><span>Character size</span><input id="charSize" type="number" step="any" inputmode="decimal" value="'+c.size+'"></label>'+
+      '<label class="field"><span>Stage position (px)</span><input id="charX" type="number" step="any" inputmode="decimal" value="'+c.x+'"></label></div>'+
       '<button class="full-button" id="addCharacter">＋ Add another character (coming soon)</button><p class="muted-copy">Tip: change the expression between scenes to make reactions feel alive.</p>';
     } else if(tab==='scenes'){
       html='<div class="inspector-section"><div class="section-title">SCENE SETTINGS</div>'+field('Scene name','sceneName',s.name)+
@@ -623,7 +635,7 @@
       '<label class="field"><span>Corner</span><select id="counterCorner">'+[['top-right','Top right'],['top-left','Top left'],['bottom-right','Bottom right'],['bottom-left','Bottom left']].map(([v,l])=>'<option value="'+v+'" '+((s.counterCorner||'top-right')===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>'+
       '<div class="section-title">SCENE OBJECTS</div><label class="field"><span>Background motion</span><select id="objectMotion">'+[['sparkles','Floating sparkles'],['bubbles','Bubbles'],['hearts','Hearts'],['rise','Rising particles'],['orbit','Orbiting sparkles'],['fast','Fast sparkles'],['none','None']].map(([v,l])=>'<option value="'+v+'" '+((s.objectMotion||'sparkles')===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>'+
       '<label class="field"><span>Legacy motion style</span><select id="sceneMotion"><option value="bounce" '+(s.motion==='bounce'?'selected':'')+'>Bouncy</option><option value="float" '+(s.motion==='float'?'selected':'')+'>Floaty</option><option value="still" '+(s.motion==='still'?'selected':'')+'>Still</option></select></label>'+
-      '<label class="field"><span>Scene duration · '+s.duration.toFixed(1)+'s</span><input id="sceneDuration" type="range" min="0.1" max="10000" step="0.1" value="'+s.duration+'"></label></div>'+
+      '<label class="field"><span>Scene duration (seconds)</span><input id="sceneDuration" type="number" step="any" inputmode="decimal" value="'+s.duration+'"></label></div>'+
       '<button class="full-button" id="duplicateScene">▣ Duplicate scene</button><button class="full-button" id="deleteScene" title="Delete selected scene (Backspace)" style="margin-top:8px">− Delete scene</button>';
     } else {
       html='<div class="inspector-section"><div class="section-title">AUDIO & VOICE</div><p class="muted-copy">Add your own narration or music track. Audio stays in this browser session.</p>'+
@@ -636,16 +648,17 @@
   }
   function bindInspector(){
     const bind=(id,fn,event='input')=>{const el=$(id);if(el)el.addEventListener(event,()=>fn(el.value));};
-    bind('charName',v=>state.character.name=v);bind('speechText',v=>state.character.speech=v);bind('ttsText',v=>{state.character.ttsText=v;state.voiceBuffer=null;state.voiceText='';});bind('charColor',v=>state.character.color=v);bind('charSize',v=>state.character.size=+v);bind('charX',v=>state.character.x=+v);
+    bind('charName',v=>state.character.name=v);bind('speechText',v=>state.character.speech=v);bind('ttsText',v=>{state.character.ttsText=v;state.voiceBuffer=null;state.voiceText='';});bind('charColor',v=>state.character.color=v);bind('charSize',v=>{const n=Number(v);if(Number.isFinite(n)&&n>0)state.character.size=n;});bind('charX',v=>{const n=Number(v);if(Number.isFinite(n))state.character.x=n;});
     bind('sceneName',v=>selectedScene().name=v);bind('sceneBg',v=>selectedScene().background=v,'change');bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedScene().subtitle=v);bind('sceneMotion',v=>selectedScene().motion=v,'change');
     bind('characterMotion',v=>selectedScene().characterMotion=v,'change');bind('houseRoom',v=>selectedScene().houseRoom=v,'change');bind('cameraMotion',v=>selectedScene().cameraMotion=v,'change');bind('objectMotion',v=>selectedScene().objectMotion=v,'change');
     bind('counterLabel',v=>selectedScene().counterLabel=v);bind('counterStart',v=>selectedScene().counterStart=Number(v)||0);bind('counterStep',v=>selectedScene().counterStep=Number(v)||0);bind('counterUnit',v=>selectedScene().counterUnit=v);
     bind('counterInterval',v=>selectedScene().counterInterval=Number(v),'change');bind('counterCorner',v=>selectedScene().counterCorner=v,'change');
     if($('counterEnabled'))$('counterEnabled').onchange=e=>selectedScene().counterEnabled=e.target.checked;
-    bind('sceneDuration',v=>{selectedScene().duration=+v;renderTimeline();updateClock();});
+    bind('sceneDuration',v=>{const n=Number(v);if(Number.isFinite(n)&&n>0){selectedScene().duration=n;state.elapsed=Math.min(state.elapsed,totalDuration());renderTimeline();updateClock();}});
     if($('speakDialogue'))$('speakDialogue').onclick=()=>state.lipSync.active?stopLipSync():startLipSync();
     if($('voiceChoice')){$('voiceChoice').value=state.voiceName;$('voiceChoice').onchange=e=>{state.voiceName=e.target.value;state.voiceBuffer=null;state.voiceText='';};}
-    bind('voiceSpeed',v=>{state.voiceSpeed=Number(v)||1;state.voiceBuffer=null;state.voiceText='';const label=$('voiceSpeedValue');if(label)label.textContent=state.voiceSpeed.toFixed(1)+'×';});
+    bind('voiceSpeed',v=>{const n=Number(v);if(Number.isFinite(n)&&n>0){state.voiceSpeed=n;state.voiceBuffer=null;state.voiceText='';}});
+    bind('ttsBackendUrl',v=>{state.ttsBackendUrl=v.trim();localStorage.setItem('cartoonlab-rust-tts-url',state.ttsBackendUrl);state.voiceBuffer=null;state.voiceText='';});
     document.querySelectorAll('[data-expression]').forEach(b=>b.onclick=()=>{state.character.expression=b.dataset.expression;renderInspector();});
     if($('duplicateScene'))$('duplicateScene').onclick=()=>{const copy={...selectedScene(),name:selectedScene().name+' copy'};state.scenes.splice(state.selected+1,0,copy);state.selected++;renderTimeline();renderInspector();toast('Scene duplicated');};
     if($('deleteScene'))$('deleteScene').onclick=()=>{if(state.scenes.length===1){toast('Keep at least one scene');return;}state.scenes.splice(state.selected,1);state.selected=Math.max(0,state.selected-1);state.elapsed=0;renderTimeline();renderInspector();};
