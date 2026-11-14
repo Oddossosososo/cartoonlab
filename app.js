@@ -5,7 +5,7 @@
   const state = {
     title: 'Untitled story', tab: 'characters', selected: 0, playing: false, vip: localStorage.getItem('cartoonlab-vip') === 'true',
     elapsed: 0, lastFrame: 0, audioUrl: null, audioName: '', audioBuffer:null, audioTracks:[], kokoro: null, kokoroLoading: false, kokoroPromise: null, voiceBuffer: null, voiceText: '', voiceName: 'af_heart', voiceSpeed: 1, voiceBufferSpeed: 1, audioContext: null, voiceSource: null, analyser: null, analyserData: null, lipSync: { active:false, startedAt:0, utterance:null },
-    character: { name: 'Bloop', color: '#ff9cba', expression: 'happy', x: 640, size: 1, speech: 'What if...?', ttsText: 'What if...?' }, extraCharacters: [], meshObjects: [],
+    character: { name: 'Bloop', color: '#ff9cba', expression: 'happy', x: 640, size: 1, speech: 'What if...?', ttsText: 'What if...?' }, extraCharacters: [], meshObjects: [], selectedMesh: 0, selectedVertex: 0,
     scenes: [{ name: 'Opening scene', duration: 6, background: 'sunset', title: 'WHAT IF...?', subtitle: 'A tiny idea. A BIG adventure.', motion: 'bounce' }]
   };
   const PROJECT_KEY = 'cartoonlab-project-v1';
@@ -90,7 +90,7 @@
     }
   }
   function projectSnapshot(){
-    return {version:3,title:state.title,character:state.character,extraCharacters:state.extraCharacters,meshObjects:state.meshObjects,scenes:state.scenes,selected:state.selected,elapsed:state.elapsed,vip:state.vip,voiceSpeed:state.voiceSpeed,voiceName:state.voiceName};
+    return {version:3,title:state.title,character:state.character,extraCharacters:state.extraCharacters,meshObjects:state.meshObjects,selectedMesh:state.selectedMesh,scenes:state.scenes,selected:state.selected,elapsed:state.elapsed,vip:state.vip,voiceSpeed:state.voiceSpeed,voiceName:state.voiceName};
   }
   function saveProject(){
     try{
@@ -120,6 +120,7 @@
       if(!state.scenes.length)state.scenes=[{name:'Opening scene',duration:3,background:'sunset',title:'WHAT IF...?',subtitle:'A tiny idea. A BIG adventure.',motion:'bounce'}];
       state.title=typeof saved.title==='string' && saved.title ? saved.title : state.title;
       state.selected=Math.max(0,Math.min(state.scenes.length-1,Number(saved.selected)||0));
+      state.selectedMesh=Math.max(0,Math.min(state.meshObjects.length-1,Number(saved.selectedMesh)||0));
       state.elapsed=Math.max(0,Math.min(Number(saved.elapsed)||0,state.scenes.reduce((n,s)=>n+Number(s.duration||0),0)));
       if(typeof saved.vip==='boolean')state.vip=saved.vip;
       if(Number.isFinite(Number(saved.voiceSpeed)))state.voiceSpeed=Number(saved.voiceSpeed);
@@ -678,6 +679,23 @@
       '<label class="field"><span>Stage position (px)</span><input id="charX" type="number" step="any" inputmode="decimal" value="'+c.x+'"></label></div>'+
       '<button class="full-button" id="addCharacter">＋ Add another character</button><p class="muted-copy">Add up to 20 extra characters. Each one appears in the scene and can have its own name, colour and position.</p>'+state.extraCharacters.map((extra,i)=>'<div class="inspector-section"><div class="section-title">EXTRA CHARACTER '+(i+1)+'</div>'+field('Name','extraName'+i,extra.name||'Character '+(i+1))+field('Colour','extraColor'+i,extra.color||'#8bd5ff','color')+field('Stage position (px)','extraX'+i,extra.x??(800+i*20),'number')+'<button class="full-button" data-remove-character="'+i+'">Remove character</button></div>').join('')+'<p class="muted-copy">Tip: change the expression between scenes to make reactions feel alive.</p>'+ 
       '<div class="mesh-lab"><div class="mesh-lab-heading"><span>⬡</span><div><b>MINI MESH LAB</b><small>Build 3D props for your characters</small></div></div><label class="field"><span>Primitive mesh</span><select id="meshPrimitive"><option value="cube">Cube</option><option value="sphere">Sphere</option><option value="cylinder">Cylinder</option><option value="cone">Cone</option><option value="pyramid">Pyramid</option><option value="torus">Torus</option></select></label><button class="full-button mesh-add" id="addMesh">＋ Create mesh object</button><p class="muted-copy">Meshes are editable, saved in your project and included in HSL exports.</p>'+state.meshObjects.map((m,i)=>'<div class="mesh-object"><div class="mesh-object-title"><b>'+escapeHtml(m.name||m.type||'Mesh')+'</b><button class="mesh-remove" data-remove-mesh="'+i+'" title="Delete mesh">×</button></div>'+field('Object name','meshName'+i,m.name||'Mesh')+'<label class="field"><span>Mesh colour</span><input id="meshColor'+i+'" type="color" value="'+escapeHtml(m.color||'#a78bfa')+'"></label><div class="field-row">'+field('X position','meshX'+i,m.x??640,'number')+field('Y position','meshY'+i,m.y??360,'number')+'</div><label class="field"><span>Size</span><input id="meshScale'+i+'" type="number" min="2" max="400" value="'+(m.scale??90)+'"></label><div class="field-row">'+field('Rotate X','meshRX'+i,m.rotationX??0,'number')+field('Rotate Y','meshRY'+i,m.rotationY??0,'number')+'</div>'+field('Rotate Z','meshRZ'+i,m.rotationZ??0,'number')+'</div>').join('')+'</div>';
+    } else if(tab==='blender'){
+      const mesh=state.meshObjects[state.selectedMesh];
+      html='<div class="blender-studio"><div class="blender-top"><div><span class="blender-kicker">CARTOONLAB / 3D WORKSPACE</span><h2>Blender</h2><p>Build, shape and colour your own objects.</p></div><span class="blender-mark">⬡</span></div>'+
+      '<div class="blender-section"><div class="blender-section-head"><b>01 · ADD SHAPE</b><span>'+state.meshObjects.length+' / 100</span></div><label class="field"><span>Primitive</span><select id="meshPrimitive"><option value="cube">Cube</option><option value="sphere">Sphere</option><option value="cylinder">Cylinder</option><option value="cone">Cone</option><option value="pyramid">Pyramid</option><option value="torus">Torus</option></select></label><button class="full-button blender-primary" id="addMesh">＋ Add shape to scene</button></div>'+
+      '<div class="blender-section"><div class="blender-section-head"><b>02 · OBJECTS</b><span>'+state.meshObjects.length+' objects</span></div>'+
+      (state.meshObjects.length?'<label class="field"><span>Selected object</span><select id="blenderObject">'+state.meshObjects.map((m,i)=>'<option value="'+i+'" '+(i===state.selectedMesh?'selected':'')+'>'+escapeHtml(m.name||m.type||('Object '+(i+1)))+'</option>').join('')+'</select></label>':'<p class="muted-copy">Add a shape above to start modelling.</p>')+
+      (mesh?'<div class="blender-object-actions"><button class="choice" id="duplicateMesh">Duplicate</button><button class="choice blender-delete" id="deleteMesh">Delete object</button></div>'+
+      '<label class="field"><span>Object name</span><input id="meshName0" type="text" value="'+escapeHtml(mesh.name||'Mesh')+'"></label>'+
+      '<div class="blender-colour"><label class="field"><span>Material / colour</span><input id="meshColor0" type="color" value="'+escapeHtml(mesh.color||'#a78bfa')+'"></label><span class="blender-swatch" style="background:'+escapeHtml(mesh.color||'#a78bfa')+'"></span></div>'+
+      '<div class="blender-section-head"><b>TRANSFORM</b><span>Scene space</span></div><div class="field-row">'+field('Position X','meshX0',mesh.x??640,'number')+field('Position Y','meshY0',mesh.y??390,'number')+'</div>'+
+      field('Overall size','meshScale0',mesh.scale??90,'number')+'<div class="field-row">'+field('Rotate X','meshRX0',mesh.rotationX??0,'number')+field('Rotate Y','meshRY0',mesh.rotationY??0,'number')+'</div>'+field('Rotate Z','meshRZ0',mesh.rotationZ??0,'number')+
+      '<div class="blender-section-head"><b>03 · EDIT & MOLD</b><span>'+mesh.vertices.length+' vertices</span></div>'+
+      '<label class="field"><span>Vertex</span><select id="blenderVertex">'+mesh.vertices.map((v,i)=>'<option value="'+i+'" '+(i===state.selectedVertex?'selected':'')+'>Vertex '+(i+1)+'</option>').join('')+'</select></label>'+
+      (mesh.vertices[state.selectedVertex]?'<div class="field-row">'+field('Vertex X','vertexX',Number(mesh.vertices[state.selectedVertex][0]).toFixed(3),'number','step="0.05"')+field('Vertex Y','vertexY',Number(mesh.vertices[state.selectedVertex][1]).toFixed(3),'number','step="0.05"')+'</div>'+field('Vertex Z','vertexZ',Number(mesh.vertices[state.selectedVertex][2]).toFixed(3),'number','step="0.05"'):'')+
+      '<div class="blender-mold"><button class="choice" id="moldInflate">＋ Inflate</button><button class="choice" id="moldDeflate">− Deflate</button><button class="choice" id="moldReset">Reset vertex</button></div>'+
+      '<p class="muted-copy">Edit vertex coordinates for precise shaping, or inflate / deflate a point to mold the surface. Changes update the scene preview and HSL save.</p>':'')+
+      '</div><div class="blender-footer">LOCAL MESH EDITOR · PROJECT-SAVED · HSL READY</div></div>';
     } else if(tab==='scenes'){
       html='<div class="inspector-section"><div class="section-title">SCENE SETTINGS</div>'+field('Scene name','sceneName',s.name)+
       '<label class="field"><span>Background</span><select id="sceneBg">'+Object.keys(backgrounds).map(k=>'<option value="'+k+'" '+(s.background===k?'selected':'')+'>'+k[0].toUpperCase()+k.slice(1)+'</option>').join('')+'<option value="withering-forest" '+(s.background==='withering-forest'?'selected':'')+'>Withering forest · changes over time</option></select></label>'+
@@ -723,7 +741,25 @@
     state.extraCharacters.forEach((c,i)=>{bind('extraName'+i,v=>c.name=v);bind('extraColor'+i,v=>c.color=v);bind('extraX'+i,v=>{const n=Number(v);if(Number.isFinite(n))c.x=n;});});
     if($('addCharacter'))$('addCharacter').onclick=()=>{if(state.extraCharacters.length>=20){toast('Character limit reached (20 extra characters)');return;}state.extraCharacters.push({name:'Character '+(state.extraCharacters.length+2),color:['#8bd5ff','#c6a6ff','#ffd27d','#9ce6b0'][state.extraCharacters.length%4],expression:'happy',x:820,size:0.9,speech:'',ttsText:''});renderInspector();draw();scheduleSave();toast('Character added to your scene');};
     document.querySelectorAll('[data-remove-character]').forEach(b=>b.onclick=()=>{state.extraCharacters.splice(Number(b.dataset.removeCharacter),1);renderInspector();draw();scheduleSave();});
-if($('addMesh'))$('addMesh').onclick=()=>{if(state.meshObjects.length>=100){toast('Mesh limit reached (100)');return;}const type=$('meshPrimitive')?.value||'cube';state.meshObjects.push(createPrimitiveMesh(type));renderInspector();draw();scheduleSave();toast(type+' mesh created');};
+if($('addMesh'))$('addMesh').onclick=()=>{if(state.meshObjects.length>=100){toast('Object limit reached (100)');return;}const type=$('meshPrimitive')?.value||'cube';state.meshObjects.push(createPrimitiveMesh(type));state.selectedMesh=state.meshObjects.length-1;state.selectedVertex=0;renderInspector();draw();scheduleSave();toast(type+' added to Blender');};
+    if($('blenderObject'))$('blenderObject').onchange=e=>{state.selectedMesh=Number(e.target.value)||0;state.selectedVertex=0;renderInspector();};
+    if($('blenderVertex'))$('blenderVertex').onchange=e=>{state.selectedVertex=Number(e.target.value)||0;renderInspector();};
+    if($('duplicateMesh'))$('duplicateMesh').onclick=()=>{if(state.meshObjects.length>=100){toast('Object limit reached (100)');return;}const copy=JSON.parse(JSON.stringify(state.meshObjects[state.selectedMesh]));copy.id='mesh-'+Date.now().toString(36);copy.name=(copy.name||'Mesh')+' Copy';copy.x=(Number(copy.x)||640)+35;copy.y=(Number(copy.y)||390)+25;state.meshObjects.push(copy);state.selectedMesh=state.meshObjects.length-1;state.selectedVertex=0;renderInspector();draw();scheduleSave();};
+    if($('deleteMesh'))$('deleteMesh').onclick=()=>{state.meshObjects.splice(state.selectedMesh,1);state.selectedMesh=Math.max(0,Math.min(state.selectedMesh,state.meshObjects.length-1));state.selectedVertex=0;renderInspector();draw();scheduleSave();};
+    const activeMesh=state.meshObjects[state.selectedMesh];
+    if(activeMesh){
+      bind('meshName0',v=>activeMesh.name=v);bind('meshColor0',v=>{activeMesh.color=v;const swatch=document.querySelector('.blender-swatch');if(swatch)swatch.style.background=v;draw();},'input');
+      const meshNum=(id,prop)=>bind(id+'0',v=>{const n=Number(v);if(Number.isFinite(n))activeMesh[prop]=n;draw();});
+      meshNum('meshX','x');meshNum('meshY','y');meshNum('meshScale','scale');meshNum('meshRX','rotationX');meshNum('meshRY','rotationY');meshNum('meshRZ','rotationZ');
+      const vertex=activeMesh.vertices[state.selectedVertex];
+      if(vertex){
+        ['X','Y','Z'].forEach((axis,i)=>bind('vertex'+axis,v=>{const n=Number(v);if(Number.isFinite(n))vertex[i]=n;draw();}));
+        const mold=(direction)=>{const length=Math.hypot(...vertex)||1;for(let axis=0;axis<3;axis++)vertex[axis]+=direction*(vertex[axis]/length)*.12;renderInspector();draw();scheduleSave();};
+        if($('moldInflate'))$('moldInflate').onclick=()=>mold(1);
+        if($('moldDeflate'))$('moldDeflate').onclick=()=>mold(-1);
+        if($('moldReset'))$('moldReset').onclick=()=>{const original=createPrimitiveMesh(activeMesh.type);const nearest=original.vertices[state.selectedVertex];if(nearest)activeMesh.vertices[state.selectedVertex]=nearest.slice();renderInspector();draw();scheduleSave();};
+      }
+    }
     state.meshObjects.forEach((m,i)=>{
       const num=(id,prop)=>bind(id+i,v=>{const n=Number(v);if(Number.isFinite(n))m[prop]=n;});
       bind('meshName'+i,v=>m.name=v);bind('meshColor'+i,v=>m.color=v,'input');
