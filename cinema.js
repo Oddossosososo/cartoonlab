@@ -210,8 +210,8 @@
     try{await navigator.clipboard.writeText(prompt);status('AI video prompt copied');}catch(e){status('Prompt ready — select and copy it');}
   };
   document.addEventListener('keydown',e=>{if(e.key==='Escape')panel.classList.remove('open');});
-  const originalCapture=stage.captureStream.bind(stage);
-  stage.captureStream=function(fps){
+  const originalCapture=typeof stage.captureStream==='function'?stage.captureStream.bind(stage):null;
+  if(originalCapture)stage.captureStream=function(fps){
     const composite=document.createElement('canvas');composite.width=1280;composite.height=720;
     const cx=composite.getContext('2d');const stream=composite.captureStream(fps||30);
     let raf=0,alive=true;
