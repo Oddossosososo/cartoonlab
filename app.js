@@ -4,7 +4,7 @@
   const $ = (id) => document.getElementById(id);
   const state = {
     title: 'Untitled story', tab: 'characters', selected: 0, playing: false, vip: localStorage.getItem('cartoonlab-vip') === 'true',
-    elapsed: 0, lastFrame: 0, audioUrl: null, audioName: '', audioBuffer:null, audioTracks:[], musicTrack:null, musicVolume:0.28, musicPreviewAudio:null, kokoro: null, kokoroLoading: false, kokoroPromise: null, voiceBuffer: null, voiceCache: new Map(), voiceText: '', voiceName: 'af_heart', voiceSpeed: 0.9, voiceBufferSpeed: 0.9, audioContext: null, voiceSource: null, analyser: null, analyserData: null, lipSync: { active:false, startedAt:0, utterance:null },
+    elapsed: 0, lastFrame: 0, audioUrl: null, audioName: '', audioBuffer:null, audioTracks:[], musicTrack:null, musicVolume:0.28, musicPreviewAudio:null, kokoro: null, kokoroLoading: false, kokoroPromise: null, voiceBuffer: null, voiceCache: new Map(), voiceText: '', voiceName: 'am_michael', voiceSpeed: 0.9, voiceBufferSpeed: 0.9, ttsEngine: localStorage.getItem('cartoonlab-tts-engine')||'kokoro', piperEndpoint: localStorage.getItem('cartoonlab-piper-endpoint')||'', audioContext: null, voiceSource: null, analyser: null, analyserData: null, lipSync: { active:false, startedAt:0, utterance:null },
     character: { name: 'Bloop', color: '#ff9cba', expression: 'happy', x: 640, size: 1, speech: 'What if...?', ttsText: 'What if...?' }, extraCharacters: [], meshObjects: [], selectedMesh: 0, selectedVertex: 0,
     scenes: [{ name: 'Opening scene', duration: 6, background: 'sunset', title: 'WHAT IF...?', subtitle: 'A tiny idea. A BIG adventure.', motion: 'bounce' }]
   };
@@ -90,7 +90,7 @@
     }
   }
   function projectSnapshot(){
-    return {version:4,title:state.title,character:state.character,extraCharacters:state.extraCharacters,meshObjects:state.meshObjects,selectedMesh:state.selectedMesh,scenes:state.scenes,selected:state.selected,elapsed:state.elapsed,vip:state.vip,voiceSpeed:state.voiceSpeed,voiceName:state.voiceName,musicTrack:state.musicTrack,musicVolume:state.musicVolume};
+    return {version:4,title:state.title,character:state.character,extraCharacters:state.extraCharacters,meshObjects:state.meshObjects,selectedMesh:state.selectedMesh,scenes:state.scenes,selected:state.selected,elapsed:state.elapsed,vip:state.vip,voiceSpeed:state.voiceSpeed,voiceName:state.voiceName,ttsEngine:state.ttsEngine,musicTrack:state.musicTrack,musicVolume:state.musicVolume};
   }
   function saveProject(){
     try{
@@ -242,6 +242,19 @@
     const useOverride=typeof textOverride==='string';
     const requestedText=String(useOverride?textOverride:state.character.ttsText||'').trim();
     if(!requestedText){toast('Add TTS text first');return null;}
+    if(state.ttsEngine==='piper'){
+      const endpoint=String(state.piperEndpoint||'').trim();
+      if(!endpoint)throw new Error('Add your Piper server URL in Character → TTS engine settings');
+      const cacheKey=JSON.stringify(['piper-michael',state.voiceSpeed,requestedText]);
+      if(state.voiceCache?.has(cacheKey))return state.voiceCache.get(cacheKey);
+      const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json','Accept':'audio/wav, audio/*'},body:JSON.stringify({text:requestedText,length_scale:1/Math.max(.5,Math.min(2,state.voiceSpeed))})});
+      if(!response.ok)throw new Error('Piper server returned HTTP '+response.status);
+      const bytes=await response.arrayBuffer();if(!bytes.byteLength)throw new Error('Piper returned an empty audio file');
+      const ac=audioContext(),decoded=await ac.decodeAudioData(bytes.slice(0));
+      const buffer=ac.createBuffer(decoded.numberOfChannels,decoded.length,decoded.sampleRate);
+      for(let ch=0;ch<decoded.numberOfChannels;ch++)buffer.copyToChannel(decoded.getChannelData(ch),ch);
+      state.voiceCache?.set(cacheKey,buffer);if(!useOverride){state.voiceBuffer=buffer;state.voiceText=requestedText;state.voiceBufferSpeed=state.voiceSpeed;}return buffer;
+    }
     const model=await loadKokoro();
     for(let attempt=0;attempt<4;attempt++){
       const text=useOverride?requestedText:String(state.character.ttsText||'').trim();
@@ -768,7 +781,7 @@
     const tab=state.tab, c=state.character, s=selectedScene();document.querySelectorAll('.inspector-tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
     let html='';
     if(tab==='characters'){
-      html='<div class="inspector-section"><div class="section-title">MAIN CHARACTER</div>'+field('Character name','charName',c.name)+'<div class="section-title">SPEECH BUBBLE · ON-SCREEN ONLY</div>'+field('Bubble text','speechText',c.speech)+'<p class="muted-copy">This text appears in the scene. It does not control the voice.</p><div class="section-title">AI TEXT-TO-SPEECH · AUDIO ONLY</div>'+field('Text to speak','ttsText',c.ttsText||'')+'<label class="field"><span>Storytelling voice</span><select id="voiceChoice"><option value="af_heart">Heart · warm narrator</option><option value="af_bella">Bella · bright</option><option value="af_nicole">Nicole · gentle</option><option value="am_adam">Adam · deeper</option><option value="am_michael">Michael · friendly</option><option value="bf_emma">Emma · British</option><option value="bm_george">George · British deep</option></select></label><label class="field"><span>Speaking speed (×)</span><input id="voiceSpeed" type="number" step="any" inputmode="decimal" value="'+state.voiceSpeed+'"></label><button class="full-button" id="quickDialogueTts" type="button">⚡ Instant preview</button><button class="full-button" id="speakDialogue">▶ Generate Kokoro AI voice</button><p class="muted-copy">Instant preview uses your browser voice. Kokoro creates the higher-quality narration for export; mouth movement follows Kokoro audio.</p></div>'+
+      html='<div class="inspector-section"><div class="section-title">MAIN CHARACTER</div>'+field('Character name','charName',c.name)+'<div class="section-title">SPEECH BUBBLE · ON-SCREEN ONLY</div>'+field('Bubble text','speechText',c.speech)+'<p class="muted-copy">This text appears in the scene. It does not control the voice.</p><div class="section-title">AI TEXT-TO-SPEECH · AUDIO ONLY</div>'+field('Text to speak','ttsText',c.ttsText||'')+'<label class="field"><span>Storytelling voice</span><select id="voiceChoice"><option value="af_heart">Heart · warm narrator</option><option value="af_bella">Bella · bright</option><option value="af_nicole">Nicole · gentle</option><option value="am_adam">Adam · deeper</option><option value="am_michael">Michael · friendly</option><option value="bf_emma">Emma · British</option><option value="bm_george">George · British deep</option></select></label><label class="field"><span>Speaking speed (×)</span><input id="voiceSpeed" type="number" step="any" inputmode="decimal" value="'+state.voiceSpeed+'"></label><label class="field"><span>TTS engine</span><select id="ttsEngineChoice"><option value="kokoro">Kokoro · Michael (original)</option><option value="piper">Piper · Michael (custom model)</option></select></label><label class="field"><span>Piper server URL</span><input id="piperEndpoint" type="url" placeholder="http://localhost:5000/" value="'+escapeHtml(state.piperEndpoint)+'"></label><p class="muted-copy">Piper requires a server running your trained Michael .onnx voice. It must accept POST JSON { text, length_scale } and return WAV audio. Kokoro Michael remains available.</p><button class="full-button" id="quickDialogueTts" type="button">⚡ Instant preview</button><button class="full-button" id="speakDialogue">▶ Generate Kokoro AI voice</button><p class="muted-copy">Instant preview uses your browser voice. Kokoro creates the higher-quality narration for export; mouth movement follows Kokoro audio.</p></div>'+
       '<div class="inspector-section"><div class="section-title">LOOK & FEEL</div>'+field('Character colour','charColor',c.color,'color')+
       '<label class="field"><span>Expression</span><div class="choice-row">'+['happy','surprised','curious','sad','angry','neutral'].map(x=>'<button class="choice '+(c.expression===x?'active':'')+'" data-expression="'+x+'">'+x[0].toUpperCase()+x.slice(1)+'</button>').join('')+'</div></label>'+
       '<label class="field"><span>Character size</span><input id="charSize" type="number" step="any" inputmode="decimal" value="'+c.size+'"></label>'+
@@ -973,6 +986,8 @@ bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedSc
     bind('sceneDuration',v=>{const n=Number(v);if(Number.isFinite(n)&&n>0){selectedScene().duration=n;state.elapsed=Math.min(state.elapsed,totalDuration());renderTimeline();updateClock();}});
     if($('speakDialogue'))$('speakDialogue').onclick=()=>state.lipSync.active?stopLipSync():startLipSync();
     if($('voiceChoice')){$('voiceChoice').value=state.voiceName;$('voiceChoice').onchange=e=>{state.voiceName=e.target.value;state.voiceBuffer=null;state.voiceText='';};}
+    if($('ttsEngineChoice')){$('ttsEngineChoice').value=state.ttsEngine;$('ttsEngineChoice').onchange=e=>{state.ttsEngine=e.target.value;localStorage.setItem('cartoonlab-tts-engine',state.ttsEngine);state.voiceBuffer=null;state.voiceText='';scheduleSave();};}
+    if($('piperEndpoint'))$('piperEndpoint').onchange=e=>{state.piperEndpoint=e.target.value.trim();localStorage.setItem('cartoonlab-piper-endpoint',state.piperEndpoint);state.voiceBuffer=null;state.voiceText='';};
     bind('voiceSpeed',v=>{const n=Number(v);if(Number.isFinite(n)&&n>0){state.voiceSpeed=n;state.voiceBuffer=null;state.voiceText='';}});
     document.querySelectorAll('[data-expression]').forEach(b=>b.onclick=()=>{state.character.expression=b.dataset.expression;renderInspector();});
     if($('duplicateScene'))$('duplicateScene').onclick=()=>{const copy={...selectedScene(),name:selectedScene().name+' copy'};state.scenes.splice(state.selected+1,0,copy);state.selected++;renderTimeline();renderInspector();toast('Scene duplicated');};
@@ -1157,7 +1172,7 @@ bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedSc
     const bytes=Uint8Array.from(binary,c=>c.charCodeAt(0));
     return JSON.parse(new TextDecoder().decode(bytes));
   }
-  const HSL4_KEYS={version:'z',rig2d:'r2',headSize:'hs',torsoLength:'tl',armLength:'arL',legLength:'leL',armLeftAngle:'aa',armRightAngle:'ab',legLeftAngle:'la',legRightAngle:'lb',rigColor:'rc',version_unused:'vu',title:'t',character:'c',extraCharacters:'x',meshObjects:'m',scenes:'s',selected:'i',elapsed:'e',vip:'v',voiceSpeed:'w',voiceName:'n',musicTrack:'mt',musicVolume:'mv',name:'a',duration:'d',background:'b',backgroundType:'bt',backgroundColor:'bc',backgroundColor2:'bd',backgroundImage:'bi',transitionDuration:'td',subtitle:'u',motion:'o',characterMotion:'q',x:'X',y:'Y',size:'S',color:'C',expression:'E',speech:'p',ttsText:'T',counterEnabled:'ce',counterMode:'cm',counterStart:'cs',counterEnd:'cn',counterCorner:'cc',layers:'l',keyframes:'k',vertices:'V',faces:'F',type:'g',id:'I',scale:'Z',rotationX:'rx',rotationY:'ry',rotationZ:'rz',visible:'vi',houseRoom:'hr',cameraMotion:'ca',cameraZoom:'cz',cameraX:'cx',cameraY:'cy',objectMotion:'om',rig:'r',armLeft:'al',armRight:'ar',legLeft:'ll',legRight:'lr'};
+  const HSL4_KEYS={version:'z',rig2d:'r2',headSize:'hs',torsoLength:'tl',armLength:'arL',legLength:'leL',armLeftAngle:'aa',armRightAngle:'ab',legLeftAngle:'la',legRightAngle:'lb',rigColor:'rc',version_unused:'vu',title:'t',character:'c',extraCharacters:'x',meshObjects:'m',scenes:'s',selected:'i',elapsed:'e',vip:'v',voiceSpeed:'w',voiceName:'n',ttsEngine:'te',musicTrack:'mt',musicVolume:'mv',name:'a',duration:'d',background:'b',backgroundType:'bt',backgroundColor:'bc',backgroundColor2:'bd',backgroundImage:'bi',transitionDuration:'td',subtitle:'u',motion:'o',characterMotion:'q',x:'X',y:'Y',size:'S',color:'C',expression:'E',speech:'p',ttsText:'T',counterEnabled:'ce',counterMode:'cm',counterStart:'cs',counterEnd:'cn',counterCorner:'cc',layers:'l',keyframes:'k',vertices:'V',faces:'F',type:'g',id:'I',scale:'Z',rotationX:'rx',rotationY:'ry',rotationZ:'rz',visible:'vi',houseRoom:'hr',cameraMotion:'ca',cameraZoom:'cz',cameraX:'cx',cameraY:'cy',objectMotion:'om',rig:'r',armLeft:'al',armRight:'ar',legLeft:'ll',legRight:'lr'};
   const HSL4_REVERSE=Object.fromEntries(Object.entries(HSL4_KEYS).map(([key,short])=>[short,key]));
   function compactHslValue(value){
     if(Array.isArray(value))return value.map(compactHslValue);
@@ -1219,7 +1234,7 @@ bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedSc
       state.elapsed=Math.max(0,Math.min(Number(project.elapsed)||0,totalDuration()));
       if(typeof project.vip==='boolean')state.vip=project.vip;
       if(Number.isFinite(Number(project.voiceSpeed)))state.voiceSpeed=Number(project.voiceSpeed);
-      if(typeof project.voiceName==='string'&&project.voiceName)state.voiceName=project.voiceName;
+      if(typeof project.voiceName==='string'&&project.voiceName)state.voiceName=project.voiceName;if(project.ttsEngine==='kokoro'||project.ttsEngine==='piper')state.ttsEngine=project.ttsEngine;
       if(Number.isFinite(Number(project.musicVolume)))state.musicVolume=Math.max(0,Math.min(1,Number(project.musicVolume)));
       if(project.musicTrack&&typeof project.musicTrack==='object')restoreMusicTrack(project.musicTrack);
       $('projectTitle').textContent=state.title;
