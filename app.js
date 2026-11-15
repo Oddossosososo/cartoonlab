@@ -265,19 +265,37 @@
     state.analyser=analyser;state.analyserData=new Uint8Array(analyser.fftSize);
     state.voiceSource=source;state.lipSync.active=true;
     const button=$('speakDialogue');if(button)button.textContent='Ⅱ Stop speech';
-    source.onended=()=>{if(state.voiceSource===source){state.lipSync.active=false;state.voiceSource=null;state.analyser=null;state.analyserData=null;const b=$('speakDialogue');if(b)b.textContent='▶ Generate + speak';}};
+    source.onended=()=>{if(state.voiceSource===source){state.lipSync.active=false;state.voiceSource=null;state.analyser=null;state.analyserData=null;const b=$('speakDialogue');if(b)b.textContent='▶ Generate Kokoro AI voice';}};
     source.start();return source;
   }
   function stopLipSync(){
     if(state.voiceSource){try{state.voiceSource.stop();}catch(e){}state.voiceSource=null;}
     if(state.lipSync.utterance){try{speechSynthesis.cancel();}catch(e){}}
     state.lipSync.active=false;state.analyser=null;state.analyserData=null;
-    const button=$('speakDialogue');if(button)button.textContent='▶ Generate + speak';
+    const button=$('speakDialogue');if(button)button.textContent='▶ Generate Kokoro AI voice';
+  }
+  function playQuickSpeech(text, buttonId){
+    const value=String(text||'').trim();
+    if(!value){toast('Add narration text first');return;}
+    if(!('speechSynthesis' in window)||!window.SpeechSynthesisUtterance){toast('Instant speech is not supported in this browser');return;}
+    stopLipSync();
+    const utterance=new SpeechSynthesisUtterance(value);
+    utterance.rate=Math.max(.5,Math.min(2,Number(state.voiceSpeed)||1));
+    utterance.lang='en-AU';
+    const voices=window.speechSynthesis.getVoices();
+    const preferred=voices.find(v=>/^en-AU/i.test(v.lang))||voices.find(v=>/^en-/i.test(v.lang));
+    if(preferred)utterance.voice=preferred;
+    state.lipSync.utterance=utterance;
+    const button=$(buttonId);
+    if(button)button.textContent='Ⅱ Stop preview';
+    const finish=()=>{if(state.lipSync.utterance===utterance)state.lipSync.utterance=null;if(button)button.textContent=buttonId==='quickSceneTts'?'⚡ Instant preview':'⚡ Instant preview';};
+    utterance.onend=finish;utterance.onerror=finish;
+    window.speechSynthesis.speak(utterance);
   }
   async function startLipSync(){
     const button=$('speakDialogue');if(button){button.disabled=true;button.textContent='Loading voice…';}
     try{stopLipSync();const buffer=await generateVoice();if(buffer)playVoiceBuffer(buffer);}
-    catch(error){console.error('Kokoro TTS:',error);toast('Voice failed: '+(error.message||'check your connection'));if(button)button.textContent='▶ Generate + speak';}
+    catch(error){console.error('Kokoro TTS:',error);toast('Voice failed: '+(error.message||'check your connection'));if(button)button.textContent='▶ Generate Kokoro AI voice';}
     finally{if(button)button.disabled=false;}
   }
   function sceneLayersForSpeech(){return (state.scenes[currentTime().index]?.layers?.speech)!==false;}
@@ -707,7 +725,7 @@
     const tab=state.tab, c=state.character, s=selectedScene();document.querySelectorAll('.inspector-tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
     let html='';
     if(tab==='characters'){
-      html='<div class="inspector-section"><div class="section-title">MAIN CHARACTER</div>'+field('Character name','charName',c.name)+'<div class="section-title">SPEECH BUBBLE · ON-SCREEN ONLY</div>'+field('Bubble text','speechText',c.speech)+'<p class="muted-copy">This text appears in the scene. It does not control the voice.</p><div class="section-title">AI TEXT-TO-SPEECH · AUDIO ONLY</div>'+field('Text to speak','ttsText',c.ttsText||'')+'<label class="field"><span>Storytelling voice</span><select id="voiceChoice"><option value="af_heart">Heart · warm narrator</option><option value="af_bella">Bella · bright</option><option value="af_nicole">Nicole · gentle</option><option value="am_adam">Adam · deeper</option><option value="am_michael">Michael · friendly</option><option value="bf_emma">Emma · British</option><option value="bm_george">George · British deep</option></select></label><label class="field"><span>Speaking speed (×)</span><input id="voiceSpeed" type="number" step="any" inputmode="decimal" value="'+state.voiceSpeed+'"></label><button class="full-button" id="speakDialogue">▶ Generate + speak</button><p class="muted-copy">Kokoro AI voice runs locally in your browser. Mouth movement follows the audio volume.</p></div>'+
+      html='<div class="inspector-section"><div class="section-title">MAIN CHARACTER</div>'+field('Character name','charName',c.name)+'<div class="section-title">SPEECH BUBBLE · ON-SCREEN ONLY</div>'+field('Bubble text','speechText',c.speech)+'<p class="muted-copy">This text appears in the scene. It does not control the voice.</p><div class="section-title">AI TEXT-TO-SPEECH · AUDIO ONLY</div>'+field('Text to speak','ttsText',c.ttsText||'')+'<label class="field"><span>Storytelling voice</span><select id="voiceChoice"><option value="af_heart">Heart · warm narrator</option><option value="af_bella">Bella · bright</option><option value="af_nicole">Nicole · gentle</option><option value="am_adam">Adam · deeper</option><option value="am_michael">Michael · friendly</option><option value="bf_emma">Emma · British</option><option value="bm_george">George · British deep</option></select></label><label class="field"><span>Speaking speed (×)</span><input id="voiceSpeed" type="number" step="any" inputmode="decimal" value="'+state.voiceSpeed+'"></label><button class="full-button" id="quickDialogueTts" type="button">⚡ Instant preview</button><button class="full-button" id="speakDialogue">▶ Generate Kokoro AI voice</button><p class="muted-copy">Instant preview uses your browser voice. Kokoro creates the higher-quality narration for export; mouth movement follows Kokoro audio.</p></div>'+
       '<div class="inspector-section"><div class="section-title">LOOK & FEEL</div>'+field('Character colour','charColor',c.color,'color')+
       '<label class="field"><span>Expression</span><div class="choice-row">'+['happy','surprised','curious','sad','angry','neutral'].map(x=>'<button class="choice '+(c.expression===x?'active':'')+'" data-expression="'+x+'">'+x[0].toUpperCase()+x.slice(1)+'</button>').join('')+'</div></label>'+
       '<label class="field"><span>Character size</span><input id="charSize" type="number" step="any" inputmode="decimal" value="'+c.size+'"></label>'+
@@ -740,7 +758,7 @@
       (s.backgroundImage?'<div class="background-image-preview"><img src="'+s.backgroundImage+'" alt="Custom background preview"><button class="choice" id="removeBackgroundImage" type="button">Remove image</button></div>':'<p class="muted-copy">Upload an image, or create a custom solid colour or gradient. Images are compressed before saving.</p>')+
       '<label class="field"><span>Scene transition · '+Number(s.transitionDuration??0.8).toFixed(1)+'s</span><input id="transitionDuration" type="range" min="0" max="3" step="0.1" value="'+Number(s.transitionDuration??0.8)+'"></label><button class="full-button" id="applyBackgroundAll" type="button">Apply this background to every scene</button></div>'+
       field('Main title','sceneTitle',s.title)+field('Subtitle','sceneSubtitle',s.subtitle)+
-      '<div class="section-title">SCENE NARRATION · TEXT TO SPEECH</div><label class="field"><span>What should be spoken in this scene?</span><textarea id="sceneTtsText" rows="5" placeholder="Write this scene narration…">'+escapeHtml(s.ttsText||'')+'</textarea></label><button class="full-button" id="speakSceneTts" type="button">▶ Generate + speak this scene</button><p class="muted-copy">This narration plays at this scene’s position in the exported film. Choose the voice in Characters.</p>'+
+      '<div class="section-title">SCENE NARRATION · TEXT TO SPEECH</div><label class="field"><span>What should be spoken in this scene?</span><textarea id="sceneTtsText" rows="5" placeholder="Write this scene narration…">'+escapeHtml(s.ttsText||'')+'</textarea></label><button class="full-button" id="quickSceneTts" type="button">⚡ Instant preview</button><button class="full-button" id="speakSceneTts" type="button">▶ Generate Kokoro voice for this scene</button><p class="muted-copy">Instant preview starts immediately with your browser voice. Kokoro narration is used for the exported film.</p>'+
       (s.houseRoom?'<div class="section-title">HOUSE WALKTHROUGH</div><label class="field"><span>Room</span><select id="houseRoom">'+[['front','Outside / front'],['hallway','Hallway'],['living','Living room'],['kitchen','Kitchen'],['bedroom','Bedroom'],['backyard','Backyard']].map(([v,l])=>'<option value="'+v+'" '+(s.houseRoom===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>':'')+
       '<div class="section-title">CHARACTER MOVEMENT</div><label class="field"><span>Movement</span><select id="characterMotion">'+[['bounce','Bounce'],['float','Float'],['walk','Walk'],['run','Run'],['jump','Jump'],['wave','Wave'],['idle','Idle']].map(([v,l])=>'<option value="'+v+'" '+((s.characterMotion||({bounce:'bounce',float:'float',still:'idle'}[s.motion]||'bounce'))===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>'+
       '<div class="section-title">CAMERA MOVEMENT</div><label class="field"><span>Camera</span><select id="cameraMotion">'+[['none','Static'],['walkthrough','Walk through'],['pan-left','Pan left'],['pan-right','Pan right'],['pan-up','Pan up'],['zoom-in','Zoom in'],['zoom-out','Zoom out'],['shake','Shake']].map(([v,l])=>'<option value="'+v+'" '+((s.cameraMotion||'none')===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>'+
@@ -863,6 +881,8 @@ if($('addMesh'))$('addMesh').onclick=()=>{if(state.meshObjects.length>=100){toas
     bind('speechText',v=>state.character.speech=v);bind('ttsText',v=>{state.character.ttsText=v;state.voiceBuffer=null;state.voiceText='';});bind('charColor',v=>state.character.color=v);bind('charSize',v=>{const n=Number(v);if(Number.isFinite(n)&&n>0)state.character.size=n;});bind('charX',v=>{const n=Number(v);if(Number.isFinite(n))state.character.x=n;});
     bind('sceneName',v=>selectedScene().name=v);
     bind('sceneTtsText',v=>{selectedScene().ttsText=v;});
+    if($('quickDialogueTts'))$('quickDialogueTts').onclick=()=>playQuickSpeech(state.character.ttsText,'quickDialogueTts');
+    if($('quickSceneTts'))$('quickSceneTts').onclick=()=>playQuickSpeech(selectedScene().ttsText,'quickSceneTts');
     if($('speakSceneTts'))$('speakSceneTts').onclick=async()=>{const text=String(selectedScene().ttsText||'').trim();if(!text){toast('Add narration for this scene first');return;}const button=$('speakSceneTts');button.disabled=true;button.textContent='Generating…';try{const buffer=await generateVoice(text);if(buffer)playVoiceBuffer(buffer);}catch(error){console.error('Scene TTS:',error);toast('Scene voice failed: '+(error.message||'check your connection'));}finally{button.disabled=false;button.textContent='▶ Generate + speak this scene';}};
     if($('sceneBg'))$('sceneBg').onchange=e=>{const scene=selectedScene();scene.background=e.target.value;scene.backgroundType='preset';scene.backgroundImage='';if(e.target.value==='withering-forest'){scene.title='YES, ALL LIFE.';scene.subtitle='Trees are life.';}draw();scheduleSave();};
     if($('backgroundType'))$('backgroundType').onchange=e=>{const scene=selectedScene();scene.backgroundType=e.target.value;if(e.target.value!=='image')scene.backgroundImage='';draw();scheduleSave();renderInspector();};
