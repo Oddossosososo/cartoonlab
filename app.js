@@ -198,7 +198,7 @@
       try{
         const {KokoroTTS}=await import('https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/dist/kokoro.web.js');
         const modelOptions={
-          dtype:'q8',device:(navigator.gpu?'webgpu':'wasm'),
+          dtype:'q8',device:'wasm',
           progress_callback:(progress)=>{
             const status=progress?.status||'';
             const pct=Number(progress?.progress);
@@ -254,8 +254,11 @@
       const result=await model.generate(text,{voice,speed});
       if(voice!==state.voiceName||speed!==state.voiceSpeed||(!useOverride&&text!==String(state.character.ttsText||'').trim()))continue;
       const ac=audioContext();
-      const samples=result.audio instanceof Float32Array?result.audio:new Float32Array(result.audio);
-      const buffer=ac.createBuffer(1,samples.length,result.sampling_rate||24000);
+      const samples=result?.audio instanceof Float32Array?result.audio:new Float32Array(result?.audio||[]);
+      if(!samples.length)throw new Error('Kokoro returned empty audio. Reload the voice model and try again.');
+      const sampleRate=Number(result.sampling_rate)||24000;
+      if(!Number.isFinite(sampleRate)||sampleRate<8000||sampleRate>96000)throw new Error('Kokoro returned an invalid audio sample rate.');
+      const buffer=ac.createBuffer(1,samples.length,sampleRate);
       buffer.copyToChannel(samples,0);
       if(state.voiceCache)state.voiceCache.set(cacheKey,buffer);
       if(!useOverride){state.voiceBuffer=buffer;state.voiceText=text;state.voiceBufferSpeed=speed;}
@@ -264,7 +267,7 @@
     throw new Error('Voice settings kept changing. Try generating the narration again.');
   }
   function playVoiceBuffer(buffer){
-    const ac=audioContext();if(ac.state==='suspended')ac.resume();
+    const ac=audioContext();if(ac.state==='suspended')ac.resume().catch(error=>console.warn('AudioContext resume failed:',error));
     if(state.voiceSource){try{state.voiceSource.stop();}catch(e){}}
     const source=ac.createBufferSource();source.buffer=buffer;
     const analyser=ac.createAnalyser();analyser.fftSize=256;
