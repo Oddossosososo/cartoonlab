@@ -254,8 +254,18 @@
       const result=await model.generate(text,{voice,speed});
       if(voice!==state.voiceName||speed!==state.voiceSpeed||(!useOverride&&text!==String(state.character.ttsText||'').trim()))continue;
       const ac=audioContext();
-      const samples=result?.audio instanceof Float32Array?result.audio:new Float32Array(result?.audio||[]);
-      if(!samples.length)throw new Error('Kokoro returned empty audio. Reload the voice model and try again.');
+      const rawSamples=result?.audio instanceof Float32Array?result.audio:new Float32Array(result?.audio||[]);
+      if(!rawSamples.length)throw new Error('Kokoro returned empty audio. Reload the voice model and try again.');
+      const samples=new Float32Array(rawSamples.length);
+      let peak=0;
+      for(let i=0;i<rawSamples.length;i++){
+        const sample=Number.isFinite(rawSamples[i])?rawSamples[i]:0;
+        samples[i]=sample;
+        peak=Math.max(peak,Math.abs(sample));
+      }
+      if(peak<0.00001)throw new Error('Kokoro generated silence. Try another voice or regenerate the narration.');
+      const normaliseGain=Math.min(100,0.9/peak);
+      for(let i=0;i<samples.length;i++)samples[i]*=normaliseGain;
       const sampleRate=Number(result.sampling_rate)||24000;
       if(!Number.isFinite(sampleRate)||sampleRate<8000||sampleRate>96000)throw new Error('Kokoro returned an invalid audio sample rate.');
       const buffer=ac.createBuffer(1,samples.length,sampleRate);
@@ -266,12 +276,14 @@
     }
     throw new Error('Voice settings kept changing. Try generating the narration again.');
   }
-  function playVoiceBuffer(buffer){
-    const ac=audioContext();if(ac.state==='suspended')ac.resume().catch(error=>console.warn('AudioContext resume failed:',error));
+  async function playVoiceBuffer(buffer){
+    const ac=audioContext();
+    if(ac.state!=='running')await ac.resume();
+    if(ac.state!=='running')throw new Error('Browser audio is still blocked. Click the voice button again to allow playback.');
     if(state.voiceSource){try{state.voiceSource.stop();}catch(e){}}
     const source=ac.createBufferSource();source.buffer=buffer;
     const analyser=ac.createAnalyser();analyser.fftSize=256;
-    const output=ac.createGain();output.gain.value=.95;
+    const output=ac.createGain();output.gain.value=1;
     source.connect(analyser);analyser.connect(output);output.connect(ac.destination);
     state.analyser=analyser;state.analyserData=new Uint8Array(analyser.fftSize);
     state.voiceSource=source;state.lipSync.active=true;
@@ -305,7 +317,7 @@
   }
   async function startLipSync(){
     const button=$('speakDialogue');if(button){button.disabled=true;button.textContent='Loading voice…';}
-    try{stopLipSync();const buffer=await generateVoice();if(buffer)playVoiceBuffer(buffer);}
+    try{stopLipSync();const buffer=await generateVoice();if(buffer)await playVoiceBuffer(buffer);}
     catch(error){console.error('Kokoro TTS:',error);toast('Voice failed: '+(error.message||'check your connection'));if(button)button.textContent='▶ Generate AI voice';}
     finally{if(button)button.disabled=false;}
   }
@@ -945,7 +957,7 @@ if($('addMesh'))$('addMesh').onclick=()=>{if(state.meshObjects.length>=100){toas
     bind('sceneTtsText',v=>{selectedScene().ttsText=v;});
     if($('quickDialogueTts'))$('quickDialogueTts').onclick=()=>playQuickSpeech(state.character.ttsText,'quickDialogueTts');
     if($('quickSceneTts'))$('quickSceneTts').onclick=()=>playQuickSpeech(selectedScene().ttsText,'quickSceneTts');
-    if($('speakSceneTts'))$('speakSceneTts').onclick=async()=>{const text=String(selectedScene().ttsText||'').trim();if(!text){toast('Add narration for this scene first');return;}const button=$('speakSceneTts');button.disabled=true;button.textContent='Generating…';try{const buffer=await generateVoice(text);if(buffer)playVoiceBuffer(buffer);}catch(error){console.error('Scene TTS:',error);toast('Scene voice failed: '+(error.message||'check your connection'));}finally{button.disabled=false;button.textContent='▶ Generate + speak this scene';}};
+    if($('speakSceneTts'))$('speakSceneTts').onclick=async()=>{const text=String(selectedScene().ttsText||'').trim();if(!text){toast('Add narration for this scene first');return;}const button=$('speakSceneTts');button.disabled=true;button.textContent='Generating…';try{const buffer=await generateVoice(text);if(buffer)await playVoiceBuffer(buffer);}catch(error){console.error('Scene TTS:',error);toast('Scene voice failed: '+(error.message||'check your connection'));}finally{button.disabled=false;button.textContent='▶ Generate + speak this scene';}};
     if($('sceneBg'))$('sceneBg').onchange=e=>{const scene=selectedScene();scene.background=e.target.value;scene.backgroundType='preset';scene.backgroundImage='';if(e.target.value==='withering-forest'){scene.title='YES, ALL LIFE.';scene.subtitle='Trees are life.';}draw();scheduleSave();};
     if($('backgroundType'))$('backgroundType').onchange=e=>{const scene=selectedScene();scene.backgroundType=e.target.value;if(e.target.value!=='image')scene.backgroundImage='';draw();scheduleSave();renderInspector();};
     ['backgroundColor','backgroundColor2'].forEach((id,i)=>{const el=$(id);if(el)el.oninput=()=>{const scene=selectedScene();if(scene.backgroundType!=='solid')scene.backgroundType='gradient';scene[i?'backgroundColor2':'backgroundColor']=el.value;draw();scheduleSave();};});
