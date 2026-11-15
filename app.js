@@ -4,7 +4,7 @@
   const $ = (id) => document.getElementById(id);
   const state = {
     title: 'Untitled story', tab: 'characters', selected: 0, playing: false, vip: localStorage.getItem('cartoonlab-vip') === 'true',
-    elapsed: 0, lastFrame: 0, audioUrl: null, audioName: '', audioBuffer:null, audioTracks:[], musicTrack:null, musicVolume:0.28, musicPreviewAudio:null, kokoro: null, kokoroLoading: false, kokoroPromise: null, voiceBuffer: null, voiceText: '', voiceName: 'af_heart', voiceSpeed: 1, voiceBufferSpeed: 1, audioContext: null, voiceSource: null, analyser: null, analyserData: null, lipSync: { active:false, startedAt:0, utterance:null },
+    elapsed: 0, lastFrame: 0, audioUrl: null, audioName: '', audioBuffer:null, audioTracks:[], musicTrack:null, musicVolume:0.28, musicPreviewAudio:null, kokoro: null, kokoroLoading: false, kokoroPromise: null, voiceBuffer: null, voiceCache: new Map(), voiceText: '', voiceName: 'af_heart', voiceSpeed: 1, voiceBufferSpeed: 1, audioContext: null, voiceSource: null, analyser: null, analyserData: null, lipSync: { active:false, startedAt:0, utterance:null },
     character: { name: 'Bloop', color: '#ff9cba', expression: 'happy', x: 640, size: 1, speech: 'What if...?', ttsText: 'What if...?' }, extraCharacters: [], meshObjects: [], selectedMesh: 0, selectedVertex: 0,
     scenes: [{ name: 'Opening scene', duration: 6, background: 'sunset', title: 'WHAT IF...?', subtitle: 'A tiny idea. A BIG adventure.', motion: 'bounce' }]
   };
@@ -90,7 +90,7 @@
     }
   }
   function projectSnapshot(){
-    return {version:3,title:state.title,character:state.character,extraCharacters:state.extraCharacters,meshObjects:state.meshObjects,selectedMesh:state.selectedMesh,scenes:state.scenes,selected:state.selected,elapsed:state.elapsed,vip:state.vip,voiceSpeed:state.voiceSpeed,voiceName:state.voiceName,musicTrack:state.musicTrack,musicVolume:state.musicVolume};
+    return {version:4,title:state.title,character:state.character,extraCharacters:state.extraCharacters,meshObjects:state.meshObjects,selectedMesh:state.selectedMesh,scenes:state.scenes,selected:state.selected,elapsed:state.elapsed,vip:state.vip,voiceSpeed:state.voiceSpeed,voiceName:state.voiceName,musicTrack:state.musicTrack,musicVolume:state.musicVolume};
   }
   function saveProject(){
     try{
@@ -114,7 +114,7 @@
       const raw=localStorage.getItem(PROJECT_KEY);
       if(!raw)return;
       const saved=JSON.parse(raw);
-      if(!saved || ![1,3].includes(saved.version) || !Array.isArray(saved.scenes) || !saved.scenes.length)return;
+      if(!saved || ![1,3,4].includes(saved.version) || !Array.isArray(saved.scenes) || !saved.scenes.length)return;
       if(saved.character && typeof saved.character==='object'){state.character={...state.character,...saved.character};if(typeof saved.character.ttsText!=='string')state.character.ttsText=String(saved.character.speech||'');}if(Array.isArray(saved.extraCharacters))state.extraCharacters=saved.extraCharacters.filter(c=>c&&typeof c==='object').slice(0,20);if(Array.isArray(saved.meshObjects))state.meshObjects=saved.meshObjects.filter(m=>m&&typeof m==='object').slice(0,100);
       state.scenes=saved.scenes.filter(s=>s && typeof s==='object' && Number.isFinite(Number(s.duration)) && Number(s.duration)>0);
       if(!state.scenes.length)state.scenes=[{name:'Opening scene',duration:3,background:'sunset',title:'WHAT IF...?',subtitle:'A tiny idea. A BIG adventure.',motion:'bounce'}];
@@ -123,7 +123,7 @@
       state.selectedMesh=Math.max(0,Math.min(state.meshObjects.length-1,Number(saved.selectedMesh)||0));
       state.elapsed=Math.max(0,Math.min(Number(saved.elapsed)||0,state.scenes.reduce((n,s)=>n+Number(s.duration||0),0)));
       if(typeof saved.vip==='boolean')state.vip=saved.vip;
-      if(Number.isFinite(Number(saved.voiceSpeed)))state.voiceSpeed=Number(saved.voiceSpeed);if(Number.isFinite(Number(saved.musicVolume)))state.musicVolume=Math.max(0,Math.min(1,Number(saved.musicVolume)));if(saved.musicTrack&&typeof saved.musicTrack==='object')restoreMusicTrack(saved.musicTrack);
+      if(Number.isFinite(Number(saved.voiceSpeed)))state.voiceSpeed=Number(saved.voiceSpeed);if(typeof saved.voiceName==='string'&&saved.voiceName)state.voiceName=saved.voiceName;if(Number.isFinite(Number(saved.musicVolume)))state.musicVolume=Math.max(0,Math.min(1,Number(saved.musicVolume)));if(saved.musicTrack&&typeof saved.musicTrack==='object')restoreMusicTrack(saved.musicTrack);
       $('projectTitle').textContent=state.title;
     }catch(error){console.warn('CartoonLab could not restore the saved project:',error);}
   }
@@ -230,28 +230,30 @@
     if(!state.audioContext)state.audioContext=new AC();
     return state.audioContext;
   }
-  async function generateVoice(){
-    if(!String(state.character.ttsText||'').trim()){toast('Add TTS text first');return null;}
-    // Wait for the model first, then read the latest editor values. If the user
-    // changes text, voice, or speed while synthesis is running, regenerate once
-    // with the newest settings instead of playing stale narration.
+  async function generateVoice(textOverride){
+    const useOverride=typeof textOverride==='string';
+    const requestedText=String(useOverride?textOverride:state.character.ttsText||'').trim();
+    if(!requestedText){toast('Add TTS text first');return null;}
     const model=await loadKokoro();
     for(let attempt=0;attempt<4;attempt++){
-      const text=String(state.character.ttsText||'').trim();
+      const text=useOverride?requestedText:String(state.character.ttsText||'').trim();
       const voice=state.voiceName;
       const speed=state.voiceSpeed;
-      if(!text){toast('Add TTS text first');return null;}
-      if(state.voiceBuffer && state.voiceText===text && state.voiceName===voice && state.voiceBufferSpeed===speed)return state.voiceBuffer;
+      if(!text)return null;
+      const cacheKey=JSON.stringify([voice,speed,text]);
+      if(state.voiceCache?.has(cacheKey))return state.voiceCache.get(cacheKey);
+      if(!useOverride&&state.voiceBuffer&&state.voiceText===text&&state.voiceName===voice&&state.voiceBufferSpeed===speed)return state.voiceBuffer;
       const result=await model.generate(text,{voice,speed});
-      if(text!==String(state.character.ttsText||'').trim()||voice!==state.voiceName||speed!==state.voiceSpeed)continue;
+      if(voice!==state.voiceName||speed!==state.voiceSpeed||(!useOverride&&text!==String(state.character.ttsText||'').trim()))continue;
       const ac=audioContext();
       const samples=result.audio instanceof Float32Array?result.audio:new Float32Array(result.audio);
       const buffer=ac.createBuffer(1,samples.length,result.sampling_rate||24000);
       buffer.copyToChannel(samples,0);
-      state.voiceBuffer=buffer;state.voiceText=text;state.voiceBufferSpeed=speed;
+      if(state.voiceCache)state.voiceCache.set(cacheKey,buffer);
+      if(!useOverride){state.voiceBuffer=buffer;state.voiceText=text;state.voiceBufferSpeed=speed;}
       return buffer;
     }
-    throw new Error('Voice settings kept changing. Press Generate + speak again.');
+    throw new Error('Voice settings kept changing. Try generating the narration again.');
   }
   function playVoiceBuffer(buffer){
     const ac=audioContext();if(ac.state==='suspended')ac.resume();
@@ -738,6 +740,7 @@
       (s.backgroundImage?'<div class="background-image-preview"><img src="'+s.backgroundImage+'" alt="Custom background preview"><button class="choice" id="removeBackgroundImage" type="button">Remove image</button></div>':'<p class="muted-copy">Upload an image, or create a custom solid colour or gradient. Images are compressed before saving.</p>')+
       '<label class="field"><span>Scene transition · '+Number(s.transitionDuration??0.8).toFixed(1)+'s</span><input id="transitionDuration" type="range" min="0" max="3" step="0.1" value="'+Number(s.transitionDuration??0.8)+'"></label><button class="full-button" id="applyBackgroundAll" type="button">Apply this background to every scene</button></div>'+
       field('Main title','sceneTitle',s.title)+field('Subtitle','sceneSubtitle',s.subtitle)+
+      '<div class="section-title">SCENE NARRATION · TEXT TO SPEECH</div><label class="field"><span>What should be spoken in this scene?</span><textarea id="sceneTtsText" rows="5" placeholder="Write this scene narration…">'+escapeHtml(s.ttsText||'')+'</textarea></label><button class="full-button" id="speakSceneTts" type="button">▶ Generate + speak this scene</button><p class="muted-copy">This narration plays at this scene’s position in the exported film. Choose the voice in Characters.</p>'+
       (s.houseRoom?'<div class="section-title">HOUSE WALKTHROUGH</div><label class="field"><span>Room</span><select id="houseRoom">'+[['front','Outside / front'],['hallway','Hallway'],['living','Living room'],['kitchen','Kitchen'],['bedroom','Bedroom'],['backyard','Backyard']].map(([v,l])=>'<option value="'+v+'" '+(s.houseRoom===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>':'')+
       '<div class="section-title">CHARACTER MOVEMENT</div><label class="field"><span>Movement</span><select id="characterMotion">'+[['bounce','Bounce'],['float','Float'],['walk','Walk'],['run','Run'],['jump','Jump'],['wave','Wave'],['idle','Idle']].map(([v,l])=>'<option value="'+v+'" '+((s.characterMotion||({bounce:'bounce',float:'float',still:'idle'}[s.motion]||'bounce'))===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>'+
       '<div class="section-title">CAMERA MOVEMENT</div><label class="field"><span>Camera</span><select id="cameraMotion">'+[['none','Static'],['walkthrough','Walk through'],['pan-left','Pan left'],['pan-right','Pan right'],['pan-up','Pan up'],['zoom-in','Zoom in'],['zoom-out','Zoom out'],['shake','Shake']].map(([v,l])=>'<option value="'+v+'" '+((s.cameraMotion||'none')===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>'+
@@ -859,6 +862,8 @@ if($('addMesh'))$('addMesh').onclick=()=>{if(state.meshObjects.length>=100){toas
     document.querySelectorAll('[data-remove-mesh]').forEach(b=>b.onclick=()=>{state.meshObjects.splice(Number(b.dataset.removeMesh),1);renderInspector();draw();scheduleSave();});
     bind('speechText',v=>state.character.speech=v);bind('ttsText',v=>{state.character.ttsText=v;state.voiceBuffer=null;state.voiceText='';});bind('charColor',v=>state.character.color=v);bind('charSize',v=>{const n=Number(v);if(Number.isFinite(n)&&n>0)state.character.size=n;});bind('charX',v=>{const n=Number(v);if(Number.isFinite(n))state.character.x=n;});
     bind('sceneName',v=>selectedScene().name=v);
+    bind('sceneTtsText',v=>{selectedScene().ttsText=v;});
+    if($('speakSceneTts'))$('speakSceneTts').onclick=async()=>{const text=String(selectedScene().ttsText||'').trim();if(!text){toast('Add narration for this scene first');return;}const button=$('speakSceneTts');button.disabled=true;button.textContent='Generating…';try{const buffer=await generateVoice(text);if(buffer)playVoiceBuffer(buffer);}catch(error){console.error('Scene TTS:',error);toast('Scene voice failed: '+(error.message||'check your connection'));}finally{button.disabled=false;button.textContent='▶ Generate + speak this scene';}};
     if($('sceneBg'))$('sceneBg').onchange=e=>{const scene=selectedScene();scene.background=e.target.value;scene.backgroundType='preset';scene.backgroundImage='';if(e.target.value==='withering-forest'){scene.title='YES, ALL LIFE.';scene.subtitle='Trees are life.';}draw();scheduleSave();};
     if($('backgroundType'))$('backgroundType').onchange=e=>{const scene=selectedScene();scene.backgroundType=e.target.value;if(e.target.value!=='image')scene.backgroundImage='';draw();scheduleSave();renderInspector();};
     ['backgroundColor','backgroundColor2'].forEach((id,i)=>{const el=$(id);if(el)el.oninput=()=>{const scene=selectedScene();if(scene.backgroundType!=='solid')scene.backgroundType='gradient';scene[i?'backgroundColor2':'backgroundColor']=el.value;draw();scheduleSave();};});
@@ -964,27 +969,44 @@ bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedSc
     if(!canvas.captureStream||!window.MediaRecorder){toast('Video recording is not supported in this browser');return;}
     const button=$('exportVideo');
     if(button)button.disabled=true;
-    state.playing=false;state.elapsed=0;$('playButton').textContent='▶';
+    state.playing=false;state.elapsed=0;state.lastFrame=0;$('playButton').textContent='▶';
     stopLipSync();
-    let voiceBuffer=null;
-    const dialogue=String(state.character.ttsText||'').trim();
-    try{
-      if(dialogue){
-        toast('Preparing AI voice for video…');
-        voiceBuffer=await generateVoice();
-        if(!voiceBuffer)throw new Error('No voice audio was generated.');
+    const hasSceneNarration=state.scenes.some(scene=>String(scene.ttsText||'').trim());
+    const narrationJobs=[];
+    let sceneStart=0;
+    if(hasSceneNarration){
+      for(const scene of state.scenes){
+        const text=String(scene.ttsText||'').trim();
+        if(text)narrationJobs.push({text,start:sceneStart});
+        sceneStart+=Math.max(0,Number(scene.duration)||0);
       }
-      const ac=(voiceBuffer||state.audioTracks.length)?audioContext():null;
+    }else{
+      const globalText=String(state.character.ttsText||'').trim();
+      if(globalText)narrationJobs.push({text:globalText,start:0});
+    }
+    try{
+      const narrations=[];
+      if(narrationJobs.length){
+        toast('Preparing '+narrationJobs.length+' narration segment(s)…');
+        for(const job of narrationJobs){
+          const buffer=await generateVoice(job.text);
+          if(buffer)narrations.push({...job,buffer});
+        }
+      }
+      const hasAudio=narrations.length>0||state.audioTracks.some(track=>track.buffer);
+      const ac=hasAudio?audioContext():null;
       if(ac&&ac.state==='suspended')await ac.resume();
       const stream=canvas.captureStream(24);
-      let audioDestination=null,voiceSource=null,exportAudioSources=[];
+      let audioDestination=null,analyser=null,voiceSources=[],exportAudioSources=[];
       if(ac){
         audioDestination=ac.createMediaStreamDestination();
-        if(voiceBuffer){
-          const analyser=ac.createAnalyser();analyser.fftSize=256;
-          voiceSource=ac.createBufferSource();voiceSource.buffer=voiceBuffer;
-          voiceSource.connect(analyser);analyser.connect(audioDestination);
+        if(narrations.length){
+          analyser=ac.createAnalyser();analyser.fftSize=256;
           state.analyser=analyser;state.analyserData=new Uint8Array(analyser.fftSize);state.lipSync.active=true;
+          narrations.forEach(item=>{
+            const source=ac.createBufferSource();source.buffer=item.buffer;
+            source.connect(analyser);voiceSources.push({...item,source});
+          });
         }
         state.audioTracks.forEach(track=>{
           if(!track.buffer)return;
@@ -992,13 +1014,15 @@ bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedSc
           const gain=ac.createGain();gain.gain.value=Number.isFinite(Number(track.gain))?Math.max(0,Math.min(1,Number(track.gain))):1;
           source.connect(gain);gain.connect(audioDestination);exportAudioSources.push(source);
         });
+        if(analyser)analyser.connect(audioDestination);
         audioDestination.stream.getAudioTracks().forEach(track=>stream.addTrack(track));
       }
       let mime='video/webm;codecs=vp9,opus';
       if(!MediaRecorder.isTypeSupported(mime))mime='video/webm';
       const recorder=new MediaRecorder(stream,{mimeType:mime});
       const chunks=[];
-      const exportDuration=Math.max(totalDuration(),voiceBuffer?voiceBuffer.duration:0.5);
+      const voiceEnd=Math.max(0,...narrations.map(item=>item.start+item.buffer.duration));
+      const exportDuration=Math.max(totalDuration(),voiceEnd,0.5);
       recorder.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data);};
       recorder.onerror=e=>{console.error('Video export recorder error:',e.error||e);toast('Video export failed. Try again.');};
       recorder.onstop=()=>{
@@ -1008,17 +1032,19 @@ bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedSc
         state.playing=false;state.elapsed=0;$('playButton').textContent='▶';
         state.lipSync.active=false;state.analyser=null;state.analyserData=null;
         if(button)button.disabled=false;
-        toast(voiceBuffer?'Video exported with AI voice included!':'Video exported without AI voice.');
+        toast(narrations.length?'Video exported with scene narration + music!':'Video exported'+(exportAudioSources.length?' with music!':'!'));
       };
       recorder.start(100);
       state.playing=true;$('playButton').textContent='Ⅱ';
-      if(voiceSource){
-        voiceSource.onended=()=>{state.lipSync.active=false;state.analyser=null;state.analyserData=null;};
-        voiceSource.start(ac.currentTime+0.08);
-      }
-      if(exportAudioSources.length)exportAudioSources.forEach(source=>source.start(ac.currentTime+0.08));
-      toast(voiceBuffer?'Recording video + AI voice + music…':(exportAudioSources.length?'Recording video + music…':'Recording video…'));
-      setTimeout(()=>{if(recorder.state!=='inactive')recorder.stop();},exportDuration*1000+150);
+      const audioStart=ac?ac.currentTime+0.08:0;
+      let activeVoices=voiceSources.length;
+      voiceSources.forEach(item=>{
+        item.source.onended=()=>{activeVoices=Math.max(0,activeVoices-1);if(activeVoices===0){state.lipSync.active=false;state.analyser=null;state.analyserData=null;}};
+        item.source.start(audioStart+item.start);
+      });
+      if(exportAudioSources.length)exportAudioSources.forEach(source=>source.start(audioStart));
+      toast(narrations.length?'Recording video + scene narration + music…':(exportAudioSources.length?'Recording video + music…':'Recording video…'));
+      setTimeout(()=>{if(recorder.state!=='inactive')recorder.stop();},exportDuration*1000+200);
     }catch(error){
       console.error('CartoonLab video export:',error);
       state.playing=false;state.elapsed=0;$('playButton').textContent='▶';
@@ -1065,14 +1091,21 @@ bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedSc
     return value;
   }
   function hypershortSource(){
-    if(compactHslReleased)return '!cartoonlab 4\\n!hsl-format 4\\n!hsl4 '+encodeHslPayload(compactHslValue(projectSnapshot()))+'\\n';
-    const lines=['!cartoonlab 3','!hsl-format 3','!project '+encodeHslPayload(projectSnapshot())];
+    const lines=['!cartoonlab 4','!hsl-format 4','!hsl4 '+encodeHslPayload(compactHslValue(projectSnapshot())),'!voice '+(state.voiceName||'af_heart')];
+    const addTtsBlock=text=>{
+      const value=String(text||'').trim();
+      if(value)lines.push('!tts',value,'!endtts');
+    };
+    addTtsBlock(state.character.ttsText);
+    const hasYearCounter=state.scenes.find(scene=>scene.counterMode==='years'&&scene.counterEnabled);
+    if(hasYearCounter)lines.push('#'+(Number(hasYearCounter.counterStart)||0)+'-'+(Number(hasYearCounter.counterEnd)||250)+'y');
     state.scenes.forEach(scene=>{
       lines.push('@'+Math.max(.1,Number(scene.duration)||5)+' '+(scene.background||'sunset'));
+      addTtsBlock(scene.ttsText);
       if(scene.title)lines.push('>'+JSON.stringify(scene.title));
       if(scene.subtitle)lines.push('_'+JSON.stringify(scene.subtitle));
     });
-    return lines.join('\\n')+'\\n';
+    return lines.join('\n')+'\n';
   }
   function downloadBlob(name,blob){
     const url=URL.createObjectURL(blob);
@@ -1087,39 +1120,95 @@ bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedSc
     downloadBlob(name,new Blob([content],{type:type||'text/plain;charset=utf-8'}));
   }
   function importHypershort(source){
-    const lines=String(source).split(/\r?\n/).map(line=>line.trim()).filter(line=>line&&!line.startsWith('//'));
-    const compactLine=lines.find(line=>line.startsWith('!hsl4 '));
-    const payloadLine=lines.find(line=>line.startsWith('!project '));
+    const lines=String(source).replace(/\r\n?/g,'\n').split('\n');
+    const compactLine=lines.find(line=>line.trim().startsWith('!hsl4 '));
+    const payloadLine=lines.find(line=>line.trim().startsWith('!project '));
     if(compactLine||payloadLine){
-      const decoded=decodeHslPayload((compactLine||payloadLine).slice(compactLine?6:9).trim());
+      const selectedLine=(compactLine||payloadLine).trim();
+      const decoded=decodeHslPayload(selectedLine.slice(compactLine?6:9).trim());
       const project=compactLine?expandHslValue(decoded):decoded;
       if(!project||!Array.isArray(project.scenes)||!project.scenes.length)throw new Error('The HSL project data is invalid');
       const scenes=project.scenes.filter(scene=>scene&&typeof scene==='object'&&Number.isFinite(Number(scene.duration))&&Number(scene.duration)>0);
       if(!scenes.length)throw new Error('The HSL file contains no valid scenes');
       checkpoint();
       state.title=typeof project.title==='string'&&project.title?project.title:'Imported HSL project';
-      if(project.character&&typeof project.character==='object')state.character={...state.character,...project.character};if(Array.isArray(project.extraCharacters))state.extraCharacters=project.extraCharacters.filter(c=>c&&typeof c==='object').slice(0,20);if(Array.isArray(project.meshObjects))state.meshObjects=project.meshObjects.filter(m=>m&&typeof m==='object').slice(0,100);
+      if(project.character&&typeof project.character==='object')state.character={...state.character,...project.character};
+      if(Array.isArray(project.extraCharacters))state.extraCharacters=project.extraCharacters.filter(c=>c&&typeof c==='object').slice(0,20);
+      if(Array.isArray(project.meshObjects))state.meshObjects=project.meshObjects.filter(m=>m&&typeof m==='object').slice(0,100);
       state.scenes=scenes;
       state.selected=Math.max(0,Math.min(scenes.length-1,Number(project.selected)||0));
       state.elapsed=Math.max(0,Math.min(Number(project.elapsed)||0,totalDuration()));
       if(typeof project.vip==='boolean')state.vip=project.vip;
       if(Number.isFinite(Number(project.voiceSpeed)))state.voiceSpeed=Number(project.voiceSpeed);
-       if(typeof project.voiceName==='string'&&project.voiceName)state.voiceName=project.voiceName;if(Number.isFinite(Number(project.musicVolume)))state.musicVolume=Math.max(0,Math.min(1,Number(project.musicVolume)));if(project.musicTrack&&typeof project.musicTrack==='object')restoreMusicTrack(project.musicTrack);
+      if(typeof project.voiceName==='string'&&project.voiceName)state.voiceName=project.voiceName;
+      if(Number.isFinite(Number(project.musicVolume)))state.musicVolume=Math.max(0,Math.min(1,Number(project.musicVolume)));
+      if(project.musicTrack&&typeof project.musicTrack==='object')restoreMusicTrack(project.musicTrack);
       $('projectTitle').textContent=state.title;
       renderTimeline();renderInspector();draw();updateClock();saveProject();
-      toast('Imported complete HSL project · '+scenes.length+' scene(s)');
+      toast('Imported complete HSL project · '+scenes.length+' scene(s), narration preserved');
       return;
     }
-    const scenes=[];let current=null,years=null,importedTitle='Hypershort video';
-    for(const line of lines){
-      if(line.startsWith('!cartoonlab '))continue;
-      if(line.startsWith('!title ')){const raw=line.slice(7).trim();try{importedTitle=JSON.parse(raw);}catch(error){importedTitle=raw;}continue;}
-      if(line.startsWith('!voice ')){const voice=line.slice(7).trim();if(!/^[a-z0-9_]+$/i.test(voice))throw new Error('Bad voice name: '+voice);state.voiceName=voice;continue;}
-      if(line.startsWith('!tts ')){const raw=line.slice(5).trim();try{state.character.ttsText=JSON.parse(raw);}catch(error){state.character.ttsText=raw;}continue;}
+    const scenes=[];
+    let current=null,years=null,importedTitle='Hypershort video',globalTts='';
+    const assignTts=text=>{if(current)current.ttsText=text;else globalTts=text;};
+    const isClosingQuote=value=>{
+      const trimmed=value.trimEnd();
+      if(!trimmed.endsWith('"'))return false;
+      let slashes=0;
+      for(let j=trimmed.length-2;j>=0&&trimmed[j]==='\\';j--)slashes++;
+      return slashes%2===0;
+    };
+    for(let i=0;i<lines.length;i++){
+      const raw=lines[i],line=raw.trim();
+      if(!line||line.startsWith('//'))continue;
+      if(line.startsWith('!cartoonlab ')||line.startsWith('!hsl-format '))continue;
+      if(line.startsWith('!title ')){
+        const value=line.slice(7).trim();
+        try{importedTitle=JSON.parse(value);}catch(error){importedTitle=value.replace(/^["']|["']$/g,'');}
+        continue;
+      }
+      if(line.startsWith('!voice ')){
+        const voice=line.slice(7).trim();
+        if(!/^[a-z0-9_]+$/i.test(voice))throw new Error('Bad voice name: '+voice);
+        state.voiceName=voice;
+        continue;
+      }
+      if(line==='!endtts')throw new Error('!endtts must follow a !tts block');
+      if(line==='!tts'||line.startsWith('!tts ')){
+        const rest=line.length===4?'':line.slice(4).trim();
+        let speech='';
+        if(!rest){
+          const parts=[];
+          let closed=false;
+          while(++i<lines.length){
+            if(lines[i].trim()==='!endtts'){closed=true;break;}
+            parts.push(lines[i]);
+          }
+          if(!closed)throw new Error('A multiline !tts block needs !endtts');
+          speech=parts.join('\n').trim();
+        }else if(rest.startsWith('"')){
+          const parts=[rest.slice(1)];
+          let closed=isClosingQuote(parts[0]);
+          if(closed)parts[0]=parts[0].trimEnd().slice(0,-1);
+          while(!closed&&++i<lines.length){
+            const part=lines[i];
+            if(isClosingQuote(part)){
+              parts.push(part.trimEnd().slice(0,-1));
+              closed=true;
+            }else parts.push(part);
+          }
+          if(!closed)throw new Error('Unclosed !tts quotation. Close it with a quote or use !endtts.');
+          speech=parts.join('\n').replace(/\\n/g,'\n').replace(/\\"/g,'"').replace(/\\\\/g,'\\').trim();
+        }else{
+          speech=rest;
+        }
+        assignTts(speech);
+        continue;
+      }
       if(line[0]==='@'){
-        const m=line.match(/^@([\d.]+)\s+([a-z-]+)$/i);
-        if(!m)throw new Error('Bad scene command: '+line);
-        current={name:'HSL scene '+(scenes.length+1),duration:Math.max(.1,Number(m[1])),background:m[2],title:'',subtitle:'',motion:'bounce'};
+        const match=line.match(/^@([\d.]+)\s+([a-z-]+)$/i);
+        if(!match)throw new Error('Bad scene command: '+line);
+        current={name:'HSL scene '+(scenes.length+1),duration:Math.max(.1,Number(match[1])),background:match[2],title:'',subtitle:'',motion:'bounce',ttsText:''};
         scenes.push(current);
       }else if(line[0]==='>'||line[0]==='_'){
         if(!current)throw new Error('Add a scene with @ first');
@@ -1127,16 +1216,19 @@ bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedSc
         try{value=JSON.parse(value);}catch(error){if(value.startsWith('"'))throw new Error('Bad quoted text: '+line);}
         if(line[0]==='>')current.title=String(value);else current.subtitle=String(value);
       }else if(line[0]==='#'){
-        const m=line.match(/^#(-?\d+(?:\.\d+)?)-(-?\d+(?:\.\d+)?)y$/i);
-        if(!m)throw new Error('Bad years command: '+line);
-        years={start:Number(m[1]),end:Number(m[2])};
-      }else throw new Error('Unknown HSL command: '+line);
+        const match=line.match(/^#(-?\d+(?:\.\d+)?)-(-?\d+(?:\.\d+)?)y$/i);
+        if(!match)throw new Error('Bad years command: '+line);
+        years={start:Number(match[1]),end:Number(match[2])};
+      }else{
+        throw new Error('Unknown HSL command: '+line);
+      }
     }
     if(!scenes.length)throw new Error('No scenes found. Start with @duration background');
     if(years)scenes.forEach(scene=>{scene.counterEnabled=true;scene.counterMode='years';scene.counterStart=years.start;scene.counterEnd=years.end;scene.counterCorner='top-right';});
+    state.character.ttsText=globalTts;
     checkpoint();state.scenes=scenes;state.selected=0;state.elapsed=0;state.title=importedTitle;
     $('projectTitle').textContent=state.title;renderTimeline();renderInspector();draw();updateClock();saveProject();
-    toast('Imported '+scenes.length+' scene(s) from HSL');
+    toast('Imported '+scenes.length+' scene(s) from HSL · narration attached to scenes');
   }
   function bindStudio(){
     const s=selectedScene(),layers=s.layers||(s.layers={background:true,props:true,character:true,speech:true,counter:true}),rig=state.character.rig||(state.character.rig={armLeft:0,armRight:0});
