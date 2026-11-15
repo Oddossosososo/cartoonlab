@@ -198,7 +198,7 @@
       try{
         const {KokoroTTS}=await import('https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/dist/kokoro.web.js');
         const model=await KokoroTTS.from_pretrained('onnx-community/Kokoro-82M-v1.0-ONNX',{
-          dtype:'q8',device:'wasm',
+          dtype:'q8',device:(navigator.gpu?'webgpu':'wasm'),
           progress_callback:(progress)=>{
             const status=progress?.status||'';
             const pct=Number(progress?.progress);
@@ -579,6 +579,30 @@
     }
     ctx.restore();
   }
+  function drawCutoutRig(){
+    const c=state.character, r=c.rig2d;
+    if(!r||!r.enabled)return;
+    const x=Number(c.x)||640, y=520, scale=Math.max(.45,Math.min(1.8,Number(c.size)||1));
+    const head=Number(r.headSize)||42, torso=Number(r.torsoLength)||105, arm=Number(r.armLength)||82, leg=Number(r.legLength)||92;
+    const color=r.rigColor||'#151321', glow='#55e8ff';
+    const point=(angle,length,side,baseY)=>({x:Math.cos(angle)*length*side,y:baseY+Math.sin(angle)*length});
+    ctx.save();ctx.translate(x,y);ctx.scale(scale,scale);ctx.lineCap='round';ctx.lineJoin='round';
+    const stroke=(width)=>{ctx.lineWidth=width;ctx.strokeStyle=color;ctx.stroke();};
+    const limb=(sx,sy,ex,ey)=>{ctx.beginPath();ctx.moveTo(sx,sy);ctx.lineTo(ex,ey);ctx.strokeStyle=glow;ctx.lineWidth=20;ctx.stroke();ctx.beginPath();ctx.moveTo(sx,sy);ctx.lineTo(ex,ey);ctx.strokeStyle=color;ctx.lineWidth=13;ctx.stroke();};
+    const shoulderY=-torso*.42, hipY=torso*.5;
+    const leftArm=point((-1.05+(Number(r.armLeftAngle)||0)*Math.PI/180),arm,-1,shoulderY);
+    const rightArm=point((-2.1+(Number(r.armRightAngle)||0)*Math.PI/180),arm,1,shoulderY);
+    const leftLeg=point((1.9+(Number(r.legLeftAngle)||0)*Math.PI/180),leg,-1,hipY);
+    const rightLeg=point((1.25+(Number(r.legRightAngle)||0)*Math.PI/180),leg,1,hipY);
+    limb(-24,shoulderY,leftArm.x,leftArm.y);limb(24,shoulderY,rightArm.x,rightArm.y);
+    limb(-13,hipY,leftLeg.x,leftLeg.y);limb(13,hipY,rightLeg.x,rightLeg.y);
+    ctx.beginPath();ctx.moveTo(0,-torso*.48);ctx.lineTo(0,hipY);ctx.strokeStyle=glow;ctx.lineWidth=30;ctx.stroke();ctx.beginPath();ctx.moveTo(0,-torso*.48);ctx.lineTo(0,hipY);ctx.strokeStyle=color;ctx.lineWidth=22;ctx.stroke();
+    ctx.beginPath();ctx.arc(0,-torso*.48-head-9,head+5,0,Math.PI*2);ctx.strokeStyle=glow;ctx.lineWidth=9;ctx.stroke();ctx.beginPath();ctx.arc(0,-torso*.48-head-9,head,0,Math.PI*2);ctx.fillStyle=r.rigColor||'#151321';ctx.fill();
+    const faceY=-torso*.48-head-9;ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(-13,faceY-4,5,0,Math.PI*2);ctx.arc(13,faceY-4,5,0,Math.PI*2);ctx.fill();ctx.fillStyle='#171326';ctx.beginPath();ctx.arc(-13,faceY-4,2.4,0,Math.PI*2);ctx.arc(13,faceY-4,2.4,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.arc(0,faceY+11,10,0,Math.PI);ctx.strokeStyle='#ff9cba';ctx.lineWidth=3;ctx.stroke();
+    [leftArm,rightArm,leftLeg,rightLeg].forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,8,0,Math.PI*2);ctx.fillStyle=glow;ctx.fill();ctx.beginPath();ctx.arc(p.x,p.y,4,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();});
+    ctx.restore();
+  }
   function draw(){
     const activeTime=currentTime();
     const scene=state.scenes[activeTime.index]||selectedScene(), bg=backgrounds[scene.background]||backgrounds.sunset;
@@ -628,6 +652,7 @@
     if(layers.character!==false){drawCharacter(studioCharacter(scene,activeTime.local),state.elapsed,scene);state.extraCharacters.forEach(c=>drawCharacter(c,state.elapsed,scene));}
     drawMeshObjects();
     ctx.restore();
+    drawCutoutRig();
     if(layers.counter!==false)drawCounter(scene,activeTime.local);
     if(!state.vip){ctx.textAlign='left';ctx.fillStyle='#ffffff88';ctx.font='600 13px DM Sans';ctx.fillText('CARTOONLAB',35,680);}
   }
@@ -732,6 +757,13 @@
       '<label class="field"><span>Stage position (px)</span><input id="charX" type="number" step="any" inputmode="decimal" value="'+c.x+'"></label></div>'+
       '<button class="full-button" id="addCharacter">＋ Add another character</button><p class="muted-copy">Add up to 20 extra characters. Each one appears in the scene and can have its own name, colour and position.</p>'+state.extraCharacters.map((extra,i)=>'<div class="inspector-section"><div class="section-title">EXTRA CHARACTER '+(i+1)+'</div>'+field('Name','extraName'+i,extra.name||'Character '+(i+1))+field('Colour','extraColor'+i,extra.color||'#8bd5ff','color')+field('Stage position (px)','extraX'+i,extra.x??(800+i*20),'number')+'<button class="full-button" data-remove-character="'+i+'">Remove character</button></div>').join('')+'<p class="muted-copy">Tip: change the expression between scenes to make reactions feel alive.</p>'+ 
       '<div class="mesh-lab"><div class="mesh-lab-heading"><span>⬡</span><div><b>MINI MESH LAB</b><small>Build 3D props for your characters</small></div></div><label class="field"><span>Primitive mesh</span><select id="meshPrimitive"><option value="cube">Cube</option><option value="sphere">Sphere</option><option value="cylinder">Cylinder</option><option value="cone">Cone</option><option value="pyramid">Pyramid</option><option value="torus">Torus</option></select></label><button class="full-button mesh-add" id="addMesh">＋ Create mesh object</button><p class="muted-copy">Meshes are editable, saved in your project and included in HSL exports.</p>'+state.meshObjects.map((m,i)=>'<div class="mesh-object"><div class="mesh-object-title"><b>'+escapeHtml(m.name||m.type||'Mesh')+'</b><button class="mesh-remove" data-remove-mesh="'+i+'" title="Delete mesh">×</button></div>'+field('Object name','meshName'+i,m.name||'Mesh')+'<label class="field"><span>Mesh colour</span><input id="meshColor'+i+'" type="color" value="'+escapeHtml(m.color||'#a78bfa')+'"></label><div class="field-row">'+field('X position','meshX'+i,m.x??640,'number')+field('Y position','meshY'+i,m.y??360,'number')+'</div><label class="field"><span>Size</span><input id="meshScale'+i+'" type="number" min="2" max="400" value="'+(m.scale??90)+'"></label><div class="field-row">'+field('Rotate X','meshRX'+i,m.rotationX??0,'number')+field('Rotate Y','meshRY'+i,m.rotationY??0,'number')+'</div>'+field('Rotate Z','meshRZ'+i,m.rotationZ??0,'number')+'</div>').join('')+'</div>';
+    } else if(tab==='rig'){
+      const r=c.rig2d||(c.rig2d={enabled:false,headSize:42,torsoLength:105,armLength:82,legLength:92,armLeftAngle:0,armRightAngle:0,legLeftAngle:0,legRightAngle:0,rigColor:'#151321'});
+      const range=(label,id,value,min,max,step)=>'<label class="field"><span>'+label+' · '+value+'</span><input id="'+id+'" type="range" min="'+min+'" max="'+max+'" step="'+step+'" value="'+value+'"></label>';
+      html='<div class="inspector-section"><div class="section-title">2D CUTOUT RIG BUILDER</div><p class="muted-copy">Build a layered stick-character rig with adjustable proportions, joint angles and a cyan edge glow. The rig is saved with your project.</p><label class="field"><span><input id="rig2dEnabled" type="checkbox" '+(r.enabled?'checked':'')+'> Show 2D rig on the stage</span></label><label class="field"><span>Character colour</span><input id="rig2dColor" type="color" value="'+escapeHtml(r.rigColor||'#151321')+'"></label></div>'+
+      '<div class="inspector-section"><div class="section-title">BODY SHAPE</div>'+range('Head size','rig2dHead',r.headSize,24,68,1)+range('Torso length','rig2dTorso',r.torsoLength,65,160,1)+range('Arm length','rig2dArm',r.armLength,45,125,1)+range('Leg length','rig2dLeg',r.legLength,55,145,1)+'</div>'+
+      '<div class="inspector-section"><div class="section-title">POSE / JOINTS</div>'+range('Left arm','rig2dArmLeft',r.armLeftAngle,-150,150,1)+range('Right arm','rig2dArmRight',r.armRightAngle,-150,150,1)+range('Left leg','rig2dLegLeft',r.legLeftAngle,-90,90,1)+range('Right leg','rig2dLegRight',r.legRightAngle,-90,90,1)+'<button class="full-button" id="rig2dReset">Reset rig pose</button><button class="full-button" id="rig2dSavePose">Save pose keyframe</button></div>'+
+      '<div class="inspector-section"><div class="section-title">RIG TEMPLATE</div><button class="full-button" id="rig2dSaveTemplate">Save rig template</button><button class="full-button" id="rig2dLoadTemplate">Load saved template</button><p class="muted-copy">Templates stay in this browser. Pose keyframes use the existing scene timeline.</p></div>';
     } else if(tab==='blender'){
       const mesh=state.meshObjects[state.selectedMesh];
       html='<div class="blender-studio"><div class="blender-top"><div><span class="blender-kicker">CARTOONLAB / 3D WORKSPACE</span><h2>Blender</h2><p>Build, shape and colour your own objects.</p></div><span class="blender-mark">⬡</span></div>'+
@@ -851,6 +883,15 @@
     const bind=(id,fn,event='input')=>{const el=$(id);if(el)el.addEventListener(event,()=>fn(el.value));};
     bind('charName',v=>state.character.name=v);
     state.extraCharacters.forEach((c,i)=>{bind('extraName'+i,v=>c.name=v);bind('extraColor'+i,v=>c.color=v);bind('extraX'+i,v=>{const n=Number(v);if(Number.isFinite(n))c.x=n;});});
+    const rig2d=()=>state.character.rig2d||(state.character.rig2d={enabled:false,headSize:42,torsoLength:105,armLength:82,legLength:92,armLeftAngle:0,armRightAngle:0,legLeftAngle:0,legRightAngle:0,rigColor:'#151321'});
+    const rigInputs={rig2dHead:'headSize',rig2dTorso:'torsoLength',rig2dArm:'armLength',rig2dLeg:'legLength',rig2dArmLeft:'armLeftAngle',rig2dArmRight:'armRightAngle',rig2dLegLeft:'legLeftAngle',rig2dLegRight:'legRightAngle'};
+    Object.entries(rigInputs).forEach(([id,key])=>{const el=$(id);if(el)el.oninput=()=>{rig2d()[key]=Number(el.value);const label=el.closest('label')?.querySelector('span');if(label)label.textContent=label.textContent.split(' · ')[0]+' · '+el.value;draw();scheduleSave();};});
+    if($('rig2dEnabled'))$('rig2dEnabled').onchange=e=>{rig2d().enabled=e.target.checked;draw();scheduleSave();};
+    if($('rig2dColor'))$('rig2dColor').oninput=e=>{rig2d().rigColor=e.target.value;draw();scheduleSave();};
+    if($('rig2dReset'))$('rig2dReset').onclick=()=>{Object.assign(rig2d(),{armLeftAngle:0,armRightAngle:0,legLeftAngle:0,legRightAngle:0});renderInspector();draw();scheduleSave();};
+    if($('rig2dSavePose'))$('rig2dSavePose').onclick=()=>{const scene=selectedScene();scene.rig2dKeys=Array.isArray(scene.rig2dKeys)?scene.rig2dKeys:[];scene.rig2dKeys.push({time:Number(currentTime().local.toFixed(3)),pose:{...rig2d()}});scene.rig2dKeys.sort((a,b)=>a.time-b.time);scheduleSave();toast('Rig pose keyframe saved');};
+    if($('rig2dSaveTemplate'))$('rig2dSaveTemplate').onclick=()=>{try{localStorage.setItem('cartoonlab-rig-template-v1',JSON.stringify(rig2d()));toast('Rig template saved');}catch(e){toast('Could not save rig template');}};
+    if($('rig2dLoadTemplate'))$('rig2dLoadTemplate').onclick=()=>{try{const saved=JSON.parse(localStorage.getItem('cartoonlab-rig-template-v1')||'null');if(!saved){toast('No saved rig template yet');return;}state.character.rig2d={...rig2d(),...saved};renderInspector();draw();scheduleSave();toast('Rig template loaded');}catch(e){toast('Saved rig template could not be loaded');}};
     if($('addCharacter'))$('addCharacter').onclick=()=>{if(state.extraCharacters.length>=20){toast('Character limit reached (20 extra characters)');return;}state.extraCharacters.push({name:'Character '+(state.extraCharacters.length+2),color:['#8bd5ff','#c6a6ff','#ffd27d','#9ce6b0'][state.extraCharacters.length%4],expression:'happy',x:820,size:0.9,speech:'',ttsText:''});renderInspector();draw();scheduleSave();toast('Character added to your scene');};
     document.querySelectorAll('[data-remove-character]').forEach(b=>b.onclick=()=>{state.extraCharacters.splice(Number(b.dataset.removeCharacter),1);renderInspector();draw();scheduleSave();});
 if($('addMesh'))$('addMesh').onclick=()=>{if(state.meshObjects.length>=100){toast('Object limit reached (100)');return;}const type=$('meshPrimitive')?.value||'cube';state.meshObjects.push(createPrimitiveMesh(type));state.selectedMesh=state.meshObjects.length-1;state.selectedVertex=0;renderInspector();draw();scheduleSave();toast(type+' added to Blender');};
@@ -1098,7 +1139,7 @@ bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedSc
     const bytes=Uint8Array.from(binary,c=>c.charCodeAt(0));
     return JSON.parse(new TextDecoder().decode(bytes));
   }
-  const HSL4_KEYS={version:'z',title:'t',character:'c',extraCharacters:'x',meshObjects:'m',scenes:'s',selected:'i',elapsed:'e',vip:'v',voiceSpeed:'w',voiceName:'n',musicTrack:'mt',musicVolume:'mv',name:'a',duration:'d',background:'b',backgroundType:'bt',backgroundColor:'bc',backgroundColor2:'bd',backgroundImage:'bi',transitionDuration:'td',subtitle:'u',motion:'o',characterMotion:'q',x:'X',y:'Y',size:'S',color:'C',expression:'E',speech:'p',ttsText:'T',counterEnabled:'ce',counterMode:'cm',counterStart:'cs',counterEnd:'cn',counterCorner:'cc',layers:'l',keyframes:'k',vertices:'V',faces:'F',type:'g',id:'I',scale:'Z',rotationX:'rx',rotationY:'ry',rotationZ:'rz',visible:'vi',houseRoom:'hr',cameraMotion:'ca',cameraZoom:'cz',cameraX:'cx',cameraY:'cy',objectMotion:'om',rig:'r',armLeft:'al',armRight:'ar',legLeft:'ll',legRight:'lr'};
+  const HSL4_KEYS={version:'z',rig2d:'r2',headSize:'hs',torsoLength:'tl',armLength:'arL',legLength:'leL',armLeftAngle:'aa',armRightAngle:'ab',legLeftAngle:'la',legRightAngle:'lb',rigColor:'rc',version_unused:'vu',title:'t',character:'c',extraCharacters:'x',meshObjects:'m',scenes:'s',selected:'i',elapsed:'e',vip:'v',voiceSpeed:'w',voiceName:'n',musicTrack:'mt',musicVolume:'mv',name:'a',duration:'d',background:'b',backgroundType:'bt',backgroundColor:'bc',backgroundColor2:'bd',backgroundImage:'bi',transitionDuration:'td',subtitle:'u',motion:'o',characterMotion:'q',x:'X',y:'Y',size:'S',color:'C',expression:'E',speech:'p',ttsText:'T',counterEnabled:'ce',counterMode:'cm',counterStart:'cs',counterEnd:'cn',counterCorner:'cc',layers:'l',keyframes:'k',vertices:'V',faces:'F',type:'g',id:'I',scale:'Z',rotationX:'rx',rotationY:'ry',rotationZ:'rz',visible:'vi',houseRoom:'hr',cameraMotion:'ca',cameraZoom:'cz',cameraX:'cx',cameraY:'cy',objectMotion:'om',rig:'r',armLeft:'al',armRight:'ar',legLeft:'ll',legRight:'lr'};
   const HSL4_REVERSE=Object.fromEntries(Object.entries(HSL4_KEYS).map(([key,short])=>[short,key]));
   function compactHslValue(value){
     if(Array.isArray(value))return value.map(compactHslValue);
