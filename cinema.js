@@ -48,7 +48,7 @@
   const toolbar = document.querySelector('.stage-tools');
   if (toolbar) toolbar.insertAdjacentHTML('beforeend','<button class="button small" id="cinemaOpen">✦ Cinema Studio</button>');
   const status = message => { const el=$('cinemaStatus'); if(el)el.textContent=message; };
-  function save(){try{localStorage.setItem(KEY,JSON.stringify(data));}catch(e){status('Storage is full. Remove a large image layer and try again.');}}
+  function save(){try{const clean={...data,layers:(data.layers||[]).map(layer=>{const copy={...layer};delete copy._video;delete copy._image;if(copy.sessionOnly){copy.url='';copy.needsReimport=true;}return copy;})};localStorage.setItem(KEY,JSON.stringify(clean));}catch(e){status('Storage is full. Remove a large image layer and try again.');}}
   function currentTime(){
     const el=$('timecode'); if(!el)return 0;
     const m=el.textContent.match(/(\d+):(\d+\.\d+)/);return m?Number(m[1])*60+Number(m[2]):0;
@@ -104,7 +104,7 @@
         ox.strokeText(layer.text||'Your title',Number(layer.x)||80,Number(layer.y)||80);
         ox.fillText(layer.text||'Your title',Number(layer.x)||80,Number(layer.y)||80);
       }else if(layer.type==='image'&&layer.image){
-        const img=new Image();if(layer._image!==img)layer._image=img;
+        const img=layer._image||(layer._image=new Image());
         if(!img.src)img.src=layer.image;
         if(img.complete&&img.naturalWidth)ox.drawImage(img,Number(layer.x)||0,Number(layer.y)||0,Number(layer.width)||1280,Number(layer.height)||720);
       }else if(layer.type==='video'&&layer.url){
@@ -185,13 +185,16 @@
   $('fxReset').onclick=()=>{Object.assign(data,{brightness:100,contrast:100,saturation:100,blur:0,vignette:0,warmth:0});syncEffects();save();status('Film effects reset');};
   ['camZoom','camX','camY'].forEach(id=>$(id).addEventListener('input',()=>{
     const c=cameraAt(currentTime());
-    const value={time:currentTime(),zoom:Number($('camZoom').value)/100,x:Number($('camX').value),y:Number($('camY').value)};
+    const value={time:Number(currentTime().toFixed(3)),zoom:Number($('camZoom').value)/100,x:Number($('camX').value),y:Number($('camY').value)};
+    if(!data.cameraKeys.length&&value.time>0)data.cameraKeys.push({time:0,zoom:1,x:0,y:0});
     const nearest=data.cameraKeys.findIndex(k=>Math.abs(k.time-value.time)<.04);
-    if(nearest>=0)data.cameraKeys[nearest]=value;
-    applyPreview();save();
+    if(nearest>=0)data.cameraKeys[nearest]=value;else data.cameraKeys.push(value);
+    data.cameraKeys.sort((a,b)=>a.time-b.time);
+    applyPreview();renderCameraKeys();save();
   }));
   $('addCameraKey').onclick=()=>{
     const key={time:Number(currentTime().toFixed(3)),zoom:Number($('camZoom').value)/100,x:Number($('camX').value),y:Number($('camY').value)};
+    if(!data.cameraKeys.length&&key.time>0)data.cameraKeys.push({time:0,zoom:1,x:0,y:0});
     const i=data.cameraKeys.findIndex(k=>Math.abs(k.time-key.time)<.04);
     if(i>=0)data.cameraKeys[i]=key;else data.cameraKeys.push(key);
     data.cameraKeys.sort((a,b)=>a.time-b.time);renderCameraKeys();save();status('Camera keyframe set at '+key.time.toFixed(2)+'s');
