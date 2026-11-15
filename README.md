@@ -21,3 +21,13 @@ CartoonLab runs locally in your browser and has no subscriptions, paid credits, 
 ## Optional Rust Kokoro TTS
 
 The editor now accepts a Rust TTS service URL in **Character → Rust TTS server URL**. The Rust service keeps a quantized Kokoro ONNX model warm between requests and returns WAV audio to the browser. See [server/README.md](server/README.md) for model setup and deployment. GitHub Pages does not run Rust itself, so the server must be hosted separately. Without a server URL, the existing in-browser Kokoro engine remains available.
+
+## Cinema Studio
+- Film looks: brightness, contrast, saturation, softness, warmth and vignette controls.
+- Camera keyframes with eased zoom and pan interpolation.
+- Extra visual layers for text, uploaded images and session-only video clips.
+- AI video prompt builder and generated-clip import workflow.
+- Cinema overlays and camera/effect processing are included in canvas video capture when the browser supports `captureStream`.
+
+### AI video generation note
+The AI panel currently builds prompts and imports clips generated elsewhere. It does not call a video-generation service directly. The GitHub Pages app is static, so a provider API key must not be placed in browser code; direct generation needs a secure server-side integration.
