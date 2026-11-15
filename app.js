@@ -197,7 +197,7 @@
     state.kokoroPromise=(async()=>{
       try{
         const {KokoroTTS}=await import('https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/dist/kokoro.web.js');
-        const model=await KokoroTTS.from_pretrained('onnx-community/Kokoro-82M-v1.0-ONNX',{
+        const modelOptions={
           dtype:'q8',device:(navigator.gpu?'webgpu':'wasm'),
           progress_callback:(progress)=>{
             const status=progress?.status||'';
@@ -210,7 +210,15 @@
               :'Downloading and preparing model files. The editor stays usable.';
             updateVoiceLoadUI({title:status==='progress_total'?'Downloading AI voice model…':'Preparing AI voice…',progress:Number.isFinite(pct)?pct:-1,detail});
           }
-        });
+        };
+        let model;
+        try{model=await KokoroTTS.from_pretrained('onnx-community/Kokoro-82M-v1.0-ONNX',modelOptions);}
+        catch(webgpuError){
+          if(modelOptions.device!=='webgpu')throw webgpuError;
+          console.warn('WebGPU voice acceleration unavailable; falling back to WASM:',webgpuError);
+          modelOptions.device='wasm';
+          model=await KokoroTTS.from_pretrained('onnx-community/Kokoro-82M-v1.0-ONNX',modelOptions);
+        }
         state.kokoro=model;
         finishVoiceLoadUI();
         toast('Kokoro voice engine ready');
@@ -580,8 +588,18 @@
     ctx.restore();
   }
   function drawCutoutRig(){
-    const c=state.character, r=c.rig2d;
-    if(!r||!r.enabled)return;
+    const c=state.character, base=c.rig2d;
+    if(!base||!base.enabled)return;
+    const scene=selectedScene(), keys=(scene.rig2dKeys||[]).slice().sort((a,b)=>a.time-b.time), time=currentTime().local;
+    let r={...base};
+    if(keys.length){
+      let before=keys[0],after=keys[keys.length-1];
+      for(let i=0;i<keys.length;i++){if(keys[i].time<=time)before=keys[i];if(keys[i].time>=time){after=keys[i];break;}}
+      const span=Math.max(.001,after.time-before.time),p=Math.max(0,Math.min(1,(time-before.time)/span));
+      ['headSize','torsoLength','armLength','legLength','armLeftAngle','armRightAngle','legLeftAngle','legRightAngle'].forEach(k=>{
+        const a=Number(before.pose?.[k]??base[k]??0),b=Number(after.pose?.[k]??base[k]??0);r[k]=a+(b-a)*p;
+      });
+    }
     const x=Number(c.x)||640, y=520, scale=Math.max(.45,Math.min(1.8,Number(c.size)||1));
     const head=Number(r.headSize)||42, torso=Number(r.torsoLength)||105, arm=Number(r.armLength)||82, leg=Number(r.legLength)||92;
     const color=r.rigColor||'#151321', glow='#55e8ff';
@@ -619,8 +637,8 @@
         paintSceneBackground(scene,progress);
       }else paintSceneBackground(scene,1);
     }
-    if(scene.houseRoom){drawMeshObjects();if(layers.character!==false){drawCharacter(studioCharacter(scene,activeTime.local),state.elapsed,scene);state.extraCharacters.forEach(c=>drawCharacter(c,state.elapsed,scene));}if(scene.title){ctx.save();ctx.textAlign='center';ctx.fillStyle='#fff';ctx.shadowColor='#0008';ctx.shadowBlur=12;ctx.font='800 42px Space Grotesk';ctx.fillText(scene.title,640,72);ctx.restore();}if(scene.subtitle){ctx.save();ctx.textAlign='center';ctx.fillStyle='#fff';ctx.font='500 20px DM Sans';ctx.fillText(scene.subtitle,640,108);ctx.restore();}}
-    if(scene.houseRoom){if(layers.counter!==false)drawCounter(scene,activeTime.local);return;}
+    if(scene.houseRoom){drawMeshObjects();if(layers.character!==false){if(!state.character.rig2d?.enabled)drawCharacter(studioCharacter(scene,activeTime.local),state.elapsed,scene);state.extraCharacters.forEach(c=>drawCharacter(c,state.elapsed,scene));}if(scene.title){ctx.save();ctx.textAlign='center';ctx.fillStyle='#fff';ctx.shadowColor='#0008';ctx.shadowBlur=12;ctx.font='800 42px Space Grotesk';ctx.fillText(scene.title,640,72);ctx.restore();}if(scene.subtitle){ctx.save();ctx.textAlign='center';ctx.fillStyle='#fff';ctx.font='500 20px DM Sans';ctx.fillText(scene.subtitle,640,108);ctx.restore();}}
+    if(scene.houseRoom){drawCutoutRig();if(layers.counter!==false)drawCounter(scene,activeTime.local);return;}
     const t=state.elapsed, camera=scene.cameraMotion||'none';
     let zoom=1,panX=0,panY=0,shakeX=0,shakeY=0;
     if(camera==='zoom-in')zoom=1+((Math.sin(t*1.1)+1)/2)*.12;
@@ -649,7 +667,7 @@
     if(scene.title){ctx.textAlign='center';ctx.fillStyle='#fff';ctx.shadowColor='#241a3a88';ctx.shadowBlur=20;ctx.font='800 62px Space Grotesk';ctx.fillText(scene.title,640,100);ctx.shadowBlur=0;}
     if(scene.subtitle){ctx.textAlign='center';ctx.fillStyle='#fff';ctx.globalAlpha=.85;ctx.font='500 22px DM Sans';ctx.fillText(scene.subtitle,640,137);ctx.globalAlpha=1;}
     if(state.onionSkin&&!state.playing){const prev=(scene.keyframes||[]).filter(k=>k.time<activeTime.local).slice(-1)[0];if(prev){ctx.save();ctx.globalAlpha=.18;drawCharacter({...state.character,...prev},state.elapsed-.08,scene);ctx.restore();}}
-    if(layers.character!==false){drawCharacter(studioCharacter(scene,activeTime.local),state.elapsed,scene);state.extraCharacters.forEach(c=>drawCharacter(c,state.elapsed,scene));}
+    if(layers.character!==false){if(!state.character.rig2d?.enabled)drawCharacter(studioCharacter(scene,activeTime.local),state.elapsed,scene);state.extraCharacters.forEach(c=>drawCharacter(c,state.elapsed,scene));}
     drawMeshObjects();
     ctx.restore();
     drawCutoutRig();
