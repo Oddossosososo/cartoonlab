@@ -1,0 +1,37 @@
+
+/* Cinema Studio */
+#cinemaOpen{border-color:#8c73d2;background:linear-gradient(120deg,#3b2c5d,#29223d);color:#eadfff}
+#cinemaOverlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1}
+#stage{position:absolute;inset:0;transform-origin:50% 50%;transition:filter .12s linear}
+#smoothVideo{z-index:3}
+#stageOverlay{z-index:4}
+.cinema-panel{position:fixed;z-index:1000;right:18px;top:82px;width:min(390px,calc(100vw - 24px));max-height:calc(100vh - 100px);overflow:auto;background:#191824;border:1px solid #51466d;border-radius:16px;box-shadow:0 22px 70px #000b;padding:16px;display:none;color:#f7f5ff}
+.cinema-panel.open{display:block;animation:cinemaIn .18s ease-out}
+@keyframes cinemaIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.cinema-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.cinema-head h2{font:700 19px 'Space Grotesk';margin:0}
+.cinema-head button{background:#302b40;border:1px solid #4b435e;color:#fff;border-radius:8px;width:30px;height:30px;cursor:pointer}
+.cinema-tabs{display:flex;gap:5px;overflow:auto;margin-bottom:14px}
+.cinema-tabs button{flex:1;min-width:max-content;background:#242130;border:1px solid #3c374d;color:#bcb6ce;border-radius:8px;padding:8px 10px;font-size:10px;font-weight:700;cursor:pointer}
+.cinema-tabs button.active{background:#3a3052;border-color:#9b7bff;color:#fff}
+.cinema-page{display:none}.cinema-page.active{display:block}
+.cinema-section{border:1px solid #373246;background:#211f2d;border-radius:11px;padding:12px;margin:10px 0}
+.cinema-section h3{font-size:10px;letter-spacing:1px;color:#c7b8ef;margin:0 0 10px}
+.cinema-field{display:block;margin:10px 0}
+.cinema-field span{display:flex;justify-content:space-between;color:#aaa5bb;font-size:10px;margin-bottom:6px}
+.cinema-field input,.cinema-field select,.cinema-field textarea{width:100%;background:#11101a;border:1px solid #403a51;color:#f7f5ff;border-radius:8px;padding:8px;font:12px 'DM Sans';}
+.cinema-field input[type=range]{padding:0;accent-color:#a58aff}
+.cinema-field input[type=color]{height:35px;padding:3px}
+.cinema-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.cinema-action{width:100%;border:1px solid #655487;background:#302744;color:#eee5ff;border-radius:8px;padding:9px 10px;font-size:11px;font-weight:700;cursor:pointer;margin:4px 0}
+.cinema-action.primary{background:linear-gradient(110deg,#9475f3,#bd80d9);border:0;color:white}
+.cinema-action.danger{border-color:#75445a;background:#3c2534;color:#ffc9d9}
+.cinema-help{font-size:10px;color:#928ca2;line-height:1.5;margin:8px 0}
+.cinema-list{display:grid;gap:6px}
+.cinema-item{display:flex;align-items:center;gap:8px;background:#171521;border:1px solid #393348;border-radius:8px;padding:8px;font-size:10px}
+.cinema-item strong{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cinema-item button{background:#35283e;border:1px solid #63445e;color:#ffd7e8;border-radius:6px;padding:4px 7px;cursor:pointer}
+.cinema-key{display:flex;align-items:center;justify-content:space-between;padding:7px 8px;border-radius:7px;background:#171521;margin:5px 0;font-size:10px}
+.cinema-key button{border:0;background:transparent;color:#ffb3ca;cursor:pointer}
+.cinema-status{font-size:10px;color:#9ee2c2;min-height:15px}
+@media(max-width:620px){.cinema-panel{right:8px;top:76px;width:calc(100vw - 16px)}}
