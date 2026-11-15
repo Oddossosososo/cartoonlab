@@ -2,6 +2,7 @@
   'use strict';
   const stage = document.getElementById('stage');
   const wrap = document.getElementById('stageWrap');
+  const smoothVideo = document.getElementById('smoothVideo');
   if (!stage || !wrap || window.cartoonLabCinemaLoaded) return;
   window.cartoonLabCinemaLoaded = true;
   const $ = id => document.getElementById(id);
@@ -16,6 +17,7 @@
   overlay.id = 'cinemaOverlay'; overlay.width = 1280; overlay.height = 720;
   wrap.appendChild(overlay);
   const ox = overlay.getContext('2d');
+  if(smoothVideo){const syncOverlayVisibility=()=>{overlay.style.display=(stage.style.display==='none'&&smoothVideo.style.display==='block')?'none':'block';};new MutationObserver(syncOverlayVisibility).observe(stage,{attributes:true,attributeFilter:['style']});new MutationObserver(syncOverlayVisibility).observe(smoothVideo,{attributes:true,attributeFilter:['style']});}
   const panel = document.createElement('aside');
   panel.className = 'cinema-panel';
   panel.id = 'cinemaPanel';
@@ -109,7 +111,7 @@
         if(img.complete&&img.naturalWidth)ox.drawImage(img,Number(layer.x)||0,Number(layer.y)||0,Number(layer.width)||1280,Number(layer.height)||720);
       }else if(layer.type==='video'&&layer.url){
         if(!layer._video){const v=document.createElement('video');v.src=layer.url;v.muted=true;v.loop=true;v.playsInline=true;v.play().catch(()=>{});layer._video=v;}
-        const v=layer._video;if(v.readyState>=2)ox.drawImage(v,Number(layer.x)||0,Number(layer.y)||0,Number(layer.width)||1280,Number(layer.height)||720);
+        const v=layer._video;if(v.readyState>=2){const wanted=Math.max(0,t-Number(layer.start||0));if(Number.isFinite(v.duration)&&v.duration>0&&Math.abs(v.currentTime-(wanted%v.duration))>.35){try{v.currentTime=wanted%v.duration;}catch(_){}}ox.drawImage(v,Number(layer.x)||0,Number(layer.y)||0,Number(layer.width)||1280,Number(layer.height)||720);}
       }
       ox.restore();
     });
