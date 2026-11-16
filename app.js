@@ -4,7 +4,7 @@
   const $ = (id) => document.getElementById(id);
   const state = {
     title: 'Untitled story', tab: 'characters', selected: 0, playing: false, vip: localStorage.getItem('cartoonlab-vip') === 'true',
-    elapsed: 0, lastFrame: 0, audioUrl: null, audioName: '', audioBuffer:null, audioTracks:[], musicTrack:null, musicVolume:0.28, musicPreviewAudio:null, kokoro: null, kokoroLoading: false, kokoroPromise: null, voiceBuffer: null, voiceCache: new Map(), voiceText: '', voiceName: 'am_michael', voiceSpeed: 0.9, voiceBufferSpeed: 0.9, voiceVolume: 1, audioContext: null, voiceSource: null, analyser: null, analyserData: null, lipSync: { active:false, startedAt:0, utterance:null, previewButtonId:null },
+    elapsed: 0, lastFrame: 0, audioUrl: null, audioName: '', audioBuffer:null, audioTracks:[], musicTrack:null, musicVolume:0.28, musicPreviewAudio:null, kokoro: null, kokoroLoading: false, kokoroPromise: null, voiceBuffer: null, voiceCache: new Map(), voiceText: '', voiceName: 'am_michael', voiceSpeed: 0.9, voiceBufferSpeed: 0.9, voiceVolume: 1, audioContext: null, voiceSource: null, voiceGain: null, analyser: null, analyserData: null, lipSync: { active:false, startedAt:0, utterance:null, previewButtonId:null },
     character: { name: 'Bloop', color: '#ff9cba', expression: 'happy', x: 640, size: 1, speech: 'What if...?', ttsText: 'What if...?' }, extraCharacters: [], meshObjects: [], selectedMesh: 0, selectedVertex: 0,
     scenes: [{ name: 'Opening scene', duration: 6, background: 'sunset', title: 'WHAT IF...?', subtitle: 'A tiny idea. A BIG adventure.', motion: 'bounce' }]
   };
@@ -271,16 +271,16 @@
     const source=ac.createBufferSource();source.buffer=buffer;
     const analyser=ac.createAnalyser();analyser.fftSize=256;
     const compressor=ac.createDynamicsCompressor();compressor.threshold.value=-20;compressor.knee.value=18;compressor.ratio.value=3;compressor.attack.value=.004;compressor.release.value=.22;
-    const output=ac.createGain();output.gain.setValueAtTime(state.voiceVolume,ac.currentTime);
+    const output=ac.createGain();output.gain.setValueAtTime(state.voiceVolume,ac.currentTime);state.voiceGain=output;
     source.connect(analyser);analyser.connect(compressor);compressor.connect(output);output.connect(ac.destination);
     state.analyser=analyser;state.analyserData=new Uint8Array(analyser.fftSize);
     state.voiceSource=source;state.lipSync.active=true;
     const button=$('speakDialogue');if(button)button.textContent='Ⅱ Stop speech';
-    source.onended=()=>{if(state.voiceSource===source){state.lipSync.active=false;state.voiceSource=null;state.analyser=null;state.analyserData=null;const b=$('speakDialogue');if(b)b.textContent='▶ Generate Kokoro AI voice';}};
+    source.onended=()=>{if(state.voiceSource===source){state.lipSync.active=false;state.voiceSource=null;state.voiceGain=null;state.analyser=null;state.analyserData=null;const b=$('speakDialogue');if(b)b.textContent='▶ Generate Kokoro AI voice';}};
     source.start();return source;
   }
   function stopLipSync(){
-    if(state.voiceSource){try{state.voiceSource.stop();}catch(e){}state.voiceSource=null;}
+    if(state.voiceSource){try{state.voiceSource.stop();}catch(e){}state.voiceSource=null;}state.voiceGain=null;
     if(state.lipSync.utterance){try{speechSynthesis.cancel();}catch(e){}}
     state.lipSync.active=false;state.analyser=null;state.analyserData=null;
     const previewButton=$(state.lipSync.previewButtonId);if(previewButton)previewButton.textContent='⚡ Instant preview';state.lipSync.previewButtonId=null;
@@ -1163,7 +1163,7 @@ bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedSc
     const bytes=Uint8Array.from(binary,c=>c.charCodeAt(0));
     return JSON.parse(new TextDecoder().decode(bytes));
   }
-  const HSL4_KEYS={version:'z',rig2d:'r2',headSize:'hs',torsoLength:'tl',armLength:'arL',legLength:'leL',armLeftAngle:'aa',armRightAngle:'ab',legLeftAngle:'la',legRightAngle:'lb',rigColor:'rc',version_unused:'vu',title:'t',character:'c',extraCharacters:'x',meshObjects:'m',scenes:'s',selected:'i',elapsed:'e',vip:'v',voiceSpeed:'w',voiceName:'n',musicTrack:'mt',musicVolume:'mv',name:'a',duration:'d',background:'b',backgroundType:'bt',backgroundColor:'bc',backgroundColor2:'bd',backgroundImage:'bi',transitionDuration:'td',subtitle:'u',motion:'o',characterMotion:'q',x:'X',y:'Y',size:'S',color:'C',expression:'E',speech:'p',ttsText:'T',counterEnabled:'ce',counterMode:'cm',counterStart:'cs',counterEnd:'cn',counterCorner:'cc',layers:'l',keyframes:'k',vertices:'V',faces:'F',type:'g',id:'I',scale:'Z',rotationX:'rx',rotationY:'ry',rotationZ:'rz',visible:'vi',houseRoom:'hr',cameraMotion:'ca',cameraZoom:'cz',cameraX:'cx',cameraY:'cy',objectMotion:'om',rig:'r',armLeft:'al',armRight:'ar',legLeft:'ll',legRight:'lr'};
+  const HSL4_KEYS={version:'z',rig2d:'r2',headSize:'hs',torsoLength:'tl',armLength:'arL',legLength:'leL',armLeftAngle:'aa',armRightAngle:'ab',legLeftAngle:'la',legRightAngle:'lb',rigColor:'rc',version_unused:'vu',title:'t',character:'c',extraCharacters:'x',meshObjects:'m',scenes:'s',selected:'i',elapsed:'e',vip:'v',voiceSpeed:'w',voiceName:'n',voiceVolume:'wv',musicTrack:'mt',musicVolume:'mv',name:'a',duration:'d',background:'b',backgroundType:'bt',backgroundColor:'bc',backgroundColor2:'bd',backgroundImage:'bi',transitionDuration:'td',subtitle:'u',motion:'o',characterMotion:'q',x:'X',y:'Y',size:'S',color:'C',expression:'E',speech:'p',ttsText:'T',counterEnabled:'ce',counterMode:'cm',counterStart:'cs',counterEnd:'cn',counterCorner:'cc',layers:'l',keyframes:'k',vertices:'V',faces:'F',type:'g',id:'I',scale:'Z',rotationX:'rx',rotationY:'ry',rotationZ:'rz',visible:'vi',houseRoom:'hr',cameraMotion:'ca',cameraZoom:'cz',cameraX:'cx',cameraY:'cy',objectMotion:'om',rig:'r',armLeft:'al',armRight:'ar',legLeft:'ll',legRight:'lr'};
   const HSL4_REVERSE=Object.fromEntries(Object.entries(HSL4_KEYS).map(([key,short])=>[short,key]));
   function compactHslValue(value){
     if(Array.isArray(value))return value.map(compactHslValue);
