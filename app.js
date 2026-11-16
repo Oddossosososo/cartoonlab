@@ -4,7 +4,7 @@
   const $ = (id) => document.getElementById(id);
   const state = {
     title: 'Untitled story', tab: 'characters', selected: 0, playing: false, vip: localStorage.getItem('cartoonlab-vip') === 'true',
-    elapsed: 0, lastFrame: 0, audioUrl: null, audioName: '', audioBuffer:null, audioTracks:[], musicTrack:null, musicVolume:0.28, musicPreviewAudio:null, kokoro: null, kokoroLoading: false, kokoroPromise: null, voiceBuffer: null, voiceCache: new Map(), voiceText: '', voiceName: 'am_michael', voiceSpeed: 0.9, voiceBufferSpeed: 0.9, audioContext: null, voiceSource: null, analyser: null, analyserData: null, lipSync: { active:false, startedAt:0, utterance:null },
+    elapsed: 0, lastFrame: 0, audioUrl: null, audioName: '', audioBuffer:null, audioTracks:[], musicTrack:null, musicVolume:0.28, musicPreviewAudio:null, kokoro: null, kokoroLoading: false, kokoroPromise: null, voiceBuffer: null, voiceCache: new Map(), voiceText: '', voiceName: 'am_michael', voiceSpeed: 0.9, voiceBufferSpeed: 0.9, voiceVolume: 1, audioContext: null, voiceSource: null, analyser: null, analyserData: null, lipSync: { active:false, startedAt:0, utterance:null, previewButtonId:null },
     character: { name: 'Bloop', color: '#ff9cba', expression: 'happy', x: 640, size: 1, speech: 'What if...?', ttsText: 'What if...?' }, extraCharacters: [], meshObjects: [], selectedMesh: 0, selectedVertex: 0,
     scenes: [{ name: 'Opening scene', duration: 6, background: 'sunset', title: 'WHAT IF...?', subtitle: 'A tiny idea. A BIG adventure.', motion: 'bounce' }]
   };
@@ -90,7 +90,7 @@
     }
   }
   function projectSnapshot(){
-    return {version:4,title:state.title,character:state.character,extraCharacters:state.extraCharacters,meshObjects:state.meshObjects,selectedMesh:state.selectedMesh,scenes:state.scenes,selected:state.selected,elapsed:state.elapsed,vip:state.vip,voiceSpeed:state.voiceSpeed,voiceName:state.voiceName,musicTrack:state.musicTrack,musicVolume:state.musicVolume};
+    return {version:4,title:state.title,character:state.character,extraCharacters:state.extraCharacters,meshObjects:state.meshObjects,selectedMesh:state.selectedMesh,scenes:state.scenes,selected:state.selected,elapsed:state.elapsed,vip:state.vip,voiceSpeed:state.voiceSpeed,voiceName:state.voiceName,voiceVolume:state.voiceVolume,musicTrack:state.musicTrack,musicVolume:state.musicVolume};
   }
   function saveProject(){
     try{
@@ -123,7 +123,7 @@
       state.selectedMesh=Math.max(0,Math.min(state.meshObjects.length-1,Number(saved.selectedMesh)||0));
       state.elapsed=Math.max(0,Math.min(Number(saved.elapsed)||0,state.scenes.reduce((n,s)=>n+Number(s.duration||0),0)));
       if(typeof saved.vip==='boolean')state.vip=saved.vip;
-      if(Number.isFinite(Number(saved.voiceSpeed)))state.voiceSpeed=Number(saved.voiceSpeed);if(typeof saved.voiceName==='string'&&saved.voiceName)state.voiceName=saved.voiceName;if(Number.isFinite(Number(saved.musicVolume)))state.musicVolume=Math.max(0,Math.min(1,Number(saved.musicVolume)));if(saved.musicTrack&&typeof saved.musicTrack==='object')restoreMusicTrack(saved.musicTrack);
+      if(Number.isFinite(Number(saved.voiceSpeed)))state.voiceSpeed=Math.max(.5,Math.min(2,Number(saved.voiceSpeed)));if(typeof saved.voiceName==='string'&&saved.voiceName)state.voiceName=saved.voiceName;if(Number.isFinite(Number(saved.voiceVolume)))state.voiceVolume=Math.max(0,Math.min(1,Number(saved.voiceVolume)));if(Number.isFinite(Number(saved.musicVolume)))state.musicVolume=Math.max(0,Math.min(1,Number(saved.musicVolume)));if(saved.musicTrack&&typeof saved.musicTrack==='object')restoreMusicTrack(saved.musicTrack);
       $('projectTitle').textContent=state.title;
     }catch(error){console.warn('CartoonLab could not restore the saved project:',error);}
   }
@@ -158,12 +158,7 @@
     }
     return 0;
   }
-  const KOKORO_DOWNLOAD_KEY='cartoonlab-kokoro-download-complete-v1';
-  function kokoroWasDownloaded(){
-    try{return localStorage.getItem(KOKORO_DOWNLOAD_KEY)==='true';}catch(error){return false;}
-  }
   function updateVoiceLoadUI(info){
-    if(kokoroWasDownloaded())return;
     let panel=$('kokoroLoadStatus');
     if(!panel){
       panel=document.createElement('div');panel.id='kokoroLoadStatus';
@@ -180,7 +175,6 @@
     detail.textContent=info.detail||'The editor remains usable while this loads.';
   }
   function finishVoiceLoadUI(){
-    try{localStorage.setItem(KOKORO_DOWNLOAD_KEY,'true');}catch(error){console.warn('Could not save Kokoro download status:',error);}
     const panel=$('kokoroLoadStatus');if(!panel)return;
     $('kokoroLoadTitle').textContent='✓ Download complete';
     $('kokoroLoadTitle').style.color='#8fe3ad';
@@ -193,7 +187,7 @@
     if(state.kokoro)return state.kokoro;
     if(state.kokoroPromise)return state.kokoroPromise;
     state.kokoroLoading=true;
-    if(!kokoroWasDownloaded())updateVoiceLoadUI({title:'Preparing AI voice…',detail:'Checking the browser cache and loading model files.'});
+    updateVoiceLoadUI({title:'Preparing AI voice…',detail:'Checking the browser cache and loading model files.'});
     state.kokoroPromise=(async()=>{
       try{
         const {KokoroTTS}=await import('https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/dist/kokoro.web.js');
@@ -211,14 +205,7 @@
             updateVoiceLoadUI({title:status==='progress_total'?'Downloading AI voice model…':'Preparing AI voice…',progress:Number.isFinite(pct)?pct:-1,detail});
           }
         };
-        let model;
-        try{model=await KokoroTTS.from_pretrained('onnx-community/Kokoro-82M-v1.0-ONNX',modelOptions);}
-        catch(webgpuError){
-          if(modelOptions.device!=='webgpu')throw webgpuError;
-          console.warn('WebGPU voice acceleration unavailable; falling back to WASM:',webgpuError);
-          modelOptions.device='wasm';
-          model=await KokoroTTS.from_pretrained('onnx-community/Kokoro-82M-v1.0-ONNX',modelOptions);
-        }
+        const model=await KokoroTTS.from_pretrained('onnx-community/Kokoro-82M-v1.0-ONNX',modelOptions);
         state.kokoro=model;
         finishVoiceLoadUI();
         toast('Kokoro voice engine ready');
@@ -249,7 +236,7 @@
       const speed=state.voiceSpeed;
       if(!text)return null;
       const cacheKey=JSON.stringify([voice,speed,text]);
-      if(state.voiceCache?.has(cacheKey))return state.voiceCache.get(cacheKey);
+      if(state.voiceCache?.has(cacheKey)){const cached=state.voiceCache.get(cacheKey);state.voiceCache.delete(cacheKey);state.voiceCache.set(cacheKey,cached);return cached;}
       if(!useOverride&&state.voiceBuffer&&state.voiceText===text&&state.voiceName===voice&&state.voiceBufferSpeed===speed)return state.voiceBuffer;
       const result=await model.generate(text,{voice,speed});
       if(voice!==state.voiceName||speed!==state.voiceSpeed||(!useOverride&&text!==String(state.character.ttsText||'').trim()))continue;
@@ -270,7 +257,7 @@
       if(!Number.isFinite(sampleRate)||sampleRate<8000||sampleRate>96000)throw new Error('Kokoro returned an invalid audio sample rate.');
       const buffer=ac.createBuffer(1,samples.length,sampleRate);
       buffer.copyToChannel(samples,0);
-      if(state.voiceCache)state.voiceCache.set(cacheKey,buffer);
+      if(state.voiceCache){state.voiceCache.set(cacheKey,buffer);while(state.voiceCache.size>10)state.voiceCache.delete(state.voiceCache.keys().next().value);}
       if(!useOverride){state.voiceBuffer=buffer;state.voiceText=text;state.voiceBufferSpeed=speed;}
       return buffer;
     }
@@ -283,8 +270,9 @@
     if(state.voiceSource){try{state.voiceSource.stop();}catch(e){}}
     const source=ac.createBufferSource();source.buffer=buffer;
     const analyser=ac.createAnalyser();analyser.fftSize=256;
-    const output=ac.createGain();output.gain.value=1;
-    source.connect(analyser);analyser.connect(output);output.connect(ac.destination);
+    const compressor=ac.createDynamicsCompressor();compressor.threshold.value=-20;compressor.knee.value=18;compressor.ratio.value=3;compressor.attack.value=.004;compressor.release.value=.22;
+    const output=ac.createGain();output.gain.setValueAtTime(state.voiceVolume,ac.currentTime);
+    source.connect(analyser);analyser.connect(compressor);compressor.connect(output);output.connect(ac.destination);
     state.analyser=analyser;state.analyserData=new Uint8Array(analyser.fftSize);
     state.voiceSource=source;state.lipSync.active=true;
     const button=$('speakDialogue');if(button)button.textContent='Ⅱ Stop speech';
@@ -295,9 +283,11 @@
     if(state.voiceSource){try{state.voiceSource.stop();}catch(e){}state.voiceSource=null;}
     if(state.lipSync.utterance){try{speechSynthesis.cancel();}catch(e){}}
     state.lipSync.active=false;state.analyser=null;state.analyserData=null;
+    const previewButton=$(state.lipSync.previewButtonId);if(previewButton)previewButton.textContent='⚡ Instant preview';state.lipSync.previewButtonId=null;
     const button=$('speakDialogue');if(button)button.textContent='▶ Generate AI voice';
   }
   function playQuickSpeech(text, buttonId){
+    if(state.lipSync.utterance&&state.lipSync.previewButtonId===buttonId){stopLipSync();return;}
     const value=String(text||'').trim();
     if(!value){toast('Add narration text first');return;}
     if(!('speechSynthesis' in window)||!window.SpeechSynthesisUtterance){toast('Instant speech is not supported in this browser');return;}
@@ -309,9 +299,9 @@
     const preferred=voices.find(v=>/^en-AU/i.test(v.lang))||voices.find(v=>/^en-/i.test(v.lang));
     if(preferred)utterance.voice=preferred;
     state.lipSync.utterance=utterance;
-    const button=$(buttonId);
+    const button=$(buttonId);state.lipSync.previewButtonId=buttonId;
     if(button)button.textContent='Ⅱ Stop preview';
-    const finish=()=>{if(state.lipSync.utterance===utterance)state.lipSync.utterance=null;if(button)button.textContent=buttonId==='quickSceneTts'?'⚡ Instant preview':'⚡ Instant preview';};
+    const finish=()=>{if(state.lipSync.utterance===utterance){state.lipSync.utterance=null;state.lipSync.previewButtonId=null;}if(button)button.textContent='⚡ Instant preview';};
     utterance.onend=finish;utterance.onerror=finish;
     window.speechSynthesis.speak(utterance);
   }
@@ -783,7 +773,7 @@
     const tab=state.tab, c=state.character, s=selectedScene();document.querySelectorAll('.inspector-tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
     let html='';
     if(tab==='characters'){
-      html='<div class="inspector-section"><div class="section-title">MAIN CHARACTER</div>'+field('Character name','charName',c.name)+'<div class="section-title">SPEECH BUBBLE · ON-SCREEN ONLY</div>'+field('Bubble text','speechText',c.speech)+'<p class="muted-copy">This text appears in the scene. It does not control the voice.</p><div class="section-title">AI TEXT-TO-SPEECH · AUDIO ONLY</div>'+field('Text to speak','ttsText',c.ttsText||'')+'<label class="field"><span>Storytelling voice</span><select id="voiceChoice"><option value="af_heart">Heart · warm narrator</option><option value="af_bella">Bella · bright</option><option value="af_nicole">Nicole · gentle</option><option value="am_adam">Adam · deeper</option><option value="am_michael">Michael · friendly</option><option value="bf_emma">Emma · British</option><option value="bm_george">George · British deep</option></select></label><label class="field"><span>Speaking speed (×)</span><input id="voiceSpeed" type="number" step="any" inputmode="decimal" value="'+state.voiceSpeed+'"></label><button class="full-button" id="quickDialogueTts" type="button">⚡ Instant preview</button><button class="full-button" id="speakDialogue">▶ Generate AI voice</button><p class="muted-copy">Instant preview uses your browser voice. Kokoro generates the AI narration for export; mouth movement follows Kokoro audio.</p></div>'+
+      html='<div class="inspector-section"><div class="section-title">MAIN CHARACTER</div>'+field('Character name','charName',c.name)+'<div class="section-title">SPEECH BUBBLE · ON-SCREEN ONLY</div>'+field('Bubble text','speechText',c.speech)+'<p class="muted-copy">This text appears in the scene. It does not control the voice.</p><div class="section-title">AI TEXT-TO-SPEECH · AUDIO ONLY</div>'+field('Text to speak','ttsText',c.ttsText||'')+'<label class="field"><span>Storytelling voice</span><select id="voiceChoice"><option value="af_heart">Heart · warm narrator</option><option value="af_bella">Bella · bright</option><option value="af_nicole">Nicole · gentle</option><option value="am_adam">Adam · deeper</option><option value="am_michael">Michael · friendly</option><option value="bf_emma">Emma · British</option><option value="bm_george">George · British deep</option></select></label><label class="field"><span>Speaking speed (×)</span><input id="voiceSpeed" type="number" min="0.5" max="2" step="0.05" inputmode="decimal" value="'+state.voiceSpeed+'"></label><label class="field"><span>AI voice volume · <output id="voiceVolumeValue">'+Math.round(state.voiceVolume*100)+'%</output></span><input id="voiceVolume" type="range" min="0" max="1" step="0.05" value="'+state.voiceVolume+'"></label><button class="full-button" id="quickDialogueTts" type="button">⚡ Instant preview</button><button class="full-button" id="speakDialogue">▶ Generate AI voice</button><p class="muted-copy">Instant preview uses your browser voice. Kokoro generates the AI narration for export; mouth movement follows Kokoro audio.</p></div>'+
       '<div class="inspector-section"><div class="section-title">LOOK & FEEL</div>'+field('Character colour','charColor',c.color,'color')+
       '<label class="field"><span>Expression</span><div class="choice-row">'+['happy','surprised','curious','sad','angry','neutral'].map(x=>'<button class="choice '+(c.expression===x?'active':'')+'" data-expression="'+x+'">'+x[0].toUpperCase()+x.slice(1)+'</button>').join('')+'</div></label>'+
       '<label class="field"><span>Character size</span><input id="charSize" type="number" step="any" inputmode="decimal" value="'+c.size+'"></label>'+
@@ -988,7 +978,8 @@ bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedSc
     bind('sceneDuration',v=>{const n=Number(v);if(Number.isFinite(n)&&n>0){selectedScene().duration=n;state.elapsed=Math.min(state.elapsed,totalDuration());renderTimeline();updateClock();}});
     if($('speakDialogue'))$('speakDialogue').onclick=()=>state.lipSync.active?stopLipSync():startLipSync();
     if($('voiceChoice')){$('voiceChoice').value=state.voiceName;$('voiceChoice').onchange=e=>{state.voiceName=e.target.value;state.voiceBuffer=null;state.voiceText='';};}
-    bind('voiceSpeed',v=>{const n=Number(v);if(Number.isFinite(n)&&n>0){state.voiceSpeed=n;state.voiceBuffer=null;state.voiceText='';}});
+    bind('voiceSpeed',v=>{const n=Number(v);if(Number.isFinite(n)){state.voiceSpeed=Math.max(.5,Math.min(2,n));state.voiceBuffer=null;state.voiceText='';scheduleSave();}});
+    bind('voiceVolume',v=>{const n=Number(v);if(Number.isFinite(n)){state.voiceVolume=Math.max(0,Math.min(1,n));const out=$('voiceVolumeValue');if(out)out.textContent=Math.round(state.voiceVolume*100)+'%';if(state.voiceGain)state.voiceGain.gain.setTargetAtTime(state.voiceVolume,audioContext().currentTime,.025);scheduleSave();}});
     document.querySelectorAll('[data-expression]').forEach(b=>b.onclick=()=>{state.character.expression=b.dataset.expression;renderInspector();});
     if($('duplicateScene'))$('duplicateScene').onclick=()=>{const copy={...selectedScene(),name:selectedScene().name+' copy'};state.scenes.splice(state.selected+1,0,copy);state.selected++;renderTimeline();renderInspector();toast('Scene duplicated');};
     if($('deleteScene'))$('deleteScene').onclick=()=>{if(state.scenes.length===1){toast('Keep at least one scene');return;}state.scenes.splice(state.selected,1);state.selected=Math.max(0,state.selected-1);state.elapsed=0;renderTimeline();renderInspector();};
@@ -1108,7 +1099,7 @@ bind('sceneTitle',v=>selectedScene().title=v);bind('sceneSubtitle',v=>selectedSc
           const gain=ac.createGain();gain.gain.value=Number.isFinite(Number(track.gain))?Math.max(0,Math.min(1,Number(track.gain))):1;
           source.connect(gain);gain.connect(audioDestination);exportAudioSources.push(source);
         });
-        if(analyser)analyser.connect(audioDestination);
+        if(analyser){const voiceCompressor=ac.createDynamicsCompressor();voiceCompressor.threshold.value=-20;voiceCompressor.knee.value=18;voiceCompressor.ratio.value=3;voiceCompressor.attack.value=.004;voiceCompressor.release.value=.22;const voiceMaster=ac.createGain();voiceMaster.gain.value=state.voiceVolume;analyser.connect(voiceCompressor);voiceCompressor.connect(voiceMaster);voiceMaster.connect(audioDestination);}
         audioDestination.stream.getAudioTracks().forEach(track=>stream.addTrack(track));
       }
       let mime='video/webm;codecs=vp9,opus';
