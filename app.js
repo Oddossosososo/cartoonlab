@@ -4,7 +4,7 @@
   const $ = (id) => document.getElementById(id);
   const state = {
     title: 'Untitled story', tab: 'characters', selected: 0, playing: false, vip: localStorage.getItem('cartoonlab-vip') === 'true',
-    elapsed: 0, lastFrame: 0, audioUrl: null, audioName: '', audioBuffer:null, audioTracks:[], musicTrack:null, musicVolume:0.28, musicPreviewAudio:null, kokoro: null, kokoroLoading: false, kokoroPromise: null, voiceBuffer: null, voiceCache: new Map(), voiceText: '', voiceName: 'am_michael', voiceSpeed: 0.9, voiceBufferSpeed: 0.9, voiceVolume: 1, audioContext: null, voiceSource: null, voiceGain: null, analyser: null, analyserData: null, lipSync: { active:false, startedAt:0, utterance:null, previewButtonId:null },
+    elapsed: 0, lastFrame: 0, audioUrl: null, audioName: '', audioBuffer:null, audioTracks:[], musicTrack:null, musicVolume:0.28, musicPreviewAudio:null, kokoro: null, kokoroLoading: false, kokoroPromise: null, voiceBuffer: null, voiceCache: new Map(), voiceText: '', voiceName: 'am_michael', voiceSpeed: 0.9, voiceBufferSpeed: 0.9, voiceVolume: 1, audioContext: null, voiceSource: null, voiceButtonId: null, voiceGain: null, analyser: null, analyserData: null, lipSync: { active:false, startedAt:0, utterance:null, previewButtonId:null },
     character: { name: 'Bloop', color: '#ff9cba', expression: 'happy', x: 640, size: 1, speech: 'What if...?', ttsText: 'What if...?' }, extraCharacters: [], meshObjects: [], selectedMesh: 0, selectedVertex: 0,
     scenes: [{ name: 'Opening scene', duration: 6, background: 'sunset', title: 'WHAT IF...?', subtitle: 'A tiny idea. A BIG adventure.', motion: 'bounce' }]
   };
@@ -263,7 +263,7 @@
     }
     throw new Error('Voice settings kept changing. Try generating the narration again.');
   }
-  async function playVoiceBuffer(buffer){
+  async function playVoiceBuffer(buffer,buttonId='speakDialogue'){
     const ac=audioContext();
     if(ac.state!=='running')await ac.resume();
     if(ac.state!=='running')throw new Error('Browser audio is still blocked. Click the voice button again to allow playback.');
@@ -275,12 +275,12 @@
     source.connect(analyser);analyser.connect(compressor);compressor.connect(output);output.connect(ac.destination);
     state.analyser=analyser;state.analyserData=new Uint8Array(analyser.fftSize);
     state.voiceSource=source;state.lipSync.active=true;
-    const button=$('speakDialogue');if(button)button.textContent='Ⅱ Stop speech';
-    source.onended=()=>{if(state.voiceSource===source){state.lipSync.active=false;state.voiceSource=null;state.voiceGain=null;state.analyser=null;state.analyserData=null;const b=$('speakDialogue');if(b)b.textContent='▶ Generate Kokoro AI voice';}};
+    state.voiceButtonId=buttonId;const button=$(buttonId);if(button)button.textContent=buttonId==='previewAiVoice'?'Ⅱ Stop AI preview':buttonId==='speakSceneTts'?'Ⅱ Stop scene voice':'Ⅱ Stop speech';
+    source.onended=()=>{if(state.voiceSource===source){state.lipSync.active=false;state.voiceSource=null;state.voiceButtonId=null;state.voiceGain=null;state.analyser=null;state.analyserData=null;const b=$(buttonId);if(b)b.textContent=buttonId==='previewAiVoice'?'♫ Preview selected AI voice':buttonId==='speakSceneTts'?'▶ Generate + speak this scene':'▶ Generate AI voice';}};
     source.start();return source;
   }
   function stopLipSync(){
-    if(state.voiceSource){try{state.voiceSource.stop();}catch(e){}state.voiceSource=null;}state.voiceGain=null;
+    if(state.voiceSource){try{state.voiceSource.stop();}catch(e){}state.voiceSource=null;}const activeVoiceButton=$(state.voiceButtonId);if(activeVoiceButton)activeVoiceButton.textContent=state.voiceButtonId==='previewAiVoice'?'♫ Preview selected AI voice':state.voiceButtonId==='speakSceneTts'?'▶ Generate + speak this scene':'▶ Generate AI voice';state.voiceButtonId=null;state.voiceGain=null;
     if(state.lipSync.utterance){try{speechSynthesis.cancel();}catch(e){}}
     state.lipSync.active=false;state.analyser=null;state.analyserData=null;
     const previewButton=$(state.lipSync.previewButtonId);if(previewButton)previewButton.textContent='⚡ Instant preview';state.lipSync.previewButtonId=null;
@@ -304,6 +304,14 @@
     const finish=()=>{if(state.lipSync.utterance===utterance){state.lipSync.utterance=null;state.lipSync.previewButtonId=null;}if(button)button.textContent='⚡ Instant preview';};
     utterance.onend=finish;utterance.onerror=finish;
     window.speechSynthesis.speak(utterance);
+  }
+  async function previewSelectedAiVoice(){
+    const button=$('previewAiVoice');if(!button)return;
+    if(state.voiceSource&&state.voiceButtonId==='previewAiVoice'){stopLipSync();return;}
+    button.disabled=true;button.textContent='Preparing AI preview…';
+    try{stopLipSync();const buffer=await generateVoice('Hello! This is a preview of your selected CartoonLab AI voice.');if(buffer)await playVoiceBuffer(buffer,'previewAiVoice');}
+    catch(error){console.error('AI voice preview:',error);toast('Voice preview failed: '+(error.message||'check the voice model'));button.textContent='♫ Preview selected AI voice';}
+    finally{button.disabled=false;}
   }
   async function startLipSync(){
     const button=$('speakDialogue');if(button){button.disabled=true;button.textContent='Loading voice…';}
@@ -773,7 +781,7 @@
     const tab=state.tab, c=state.character, s=selectedScene();document.querySelectorAll('.inspector-tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
     let html='';
     if(tab==='characters'){
-      html='<div class="inspector-section"><div class="section-title">MAIN CHARACTER</div>'+field('Character name','charName',c.name)+'<div class="section-title">SPEECH BUBBLE · ON-SCREEN ONLY</div>'+field('Bubble text','speechText',c.speech)+'<p class="muted-copy">This text appears in the scene. It does not control the voice.</p><div class="section-title">AI TEXT-TO-SPEECH · AUDIO ONLY</div>'+field('Text to speak','ttsText',c.ttsText||'')+'<label class="field"><span>Storytelling voice</span><select id="voiceChoice"><option value="af_heart">Heart · warm narrator</option><option value="af_bella">Bella · bright</option><option value="af_nicole">Nicole · gentle</option><option value="am_adam">Adam · deeper</option><option value="am_michael">Michael · friendly</option><option value="bf_emma">Emma · British</option><option value="bm_george">George · British deep</option></select></label><label class="field"><span>Speaking speed (×)</span><input id="voiceSpeed" type="number" min="0.5" max="2" step="0.05" inputmode="decimal" value="'+state.voiceSpeed+'"></label><label class="field"><span>AI voice volume · <output id="voiceVolumeValue">'+Math.round(state.voiceVolume*100)+'%</output></span><input id="voiceVolume" type="range" min="0" max="1" step="0.05" value="'+state.voiceVolume+'"></label><button class="full-button" id="quickDialogueTts" type="button">⚡ Instant preview</button><button class="full-button" id="speakDialogue">▶ Generate AI voice</button><p class="muted-copy">Instant preview uses your browser voice. Kokoro generates the AI narration for export; mouth movement follows Kokoro audio.</p></div>'+
+      html='<div class="inspector-section"><div class="section-title">MAIN CHARACTER</div>'+field('Character name','charName',c.name)+'<div class="section-title">SPEECH BUBBLE · ON-SCREEN ONLY</div>'+field('Bubble text','speechText',c.speech)+'<p class="muted-copy">This text appears in the scene. It does not control the voice.</p><div class="section-title">AI TEXT-TO-SPEECH · AUDIO ONLY</div>'+field('Text to speak','ttsText',c.ttsText||'')+'<label class="field"><span>Storytelling voice</span><select id="voiceChoice"><option value="af_heart">Heart · warm narrator</option><option value="af_bella">Bella · bright</option><option value="af_nicole">Nicole · gentle</option><option value="am_adam">Adam · deeper</option><option value="am_michael">Michael · friendly</option><option value="bf_emma">Emma · British</option><option value="bm_george">George · British deep</option></select></label><label class="field"><span>Speaking speed (×)</span><input id="voiceSpeed" type="number" min="0.5" max="2" step="0.05" inputmode="decimal" value="'+state.voiceSpeed+'"></label><label class="field"><span>AI voice volume · <output id="voiceVolumeValue">'+Math.round(state.voiceVolume*100)+'%</output></span><input id="voiceVolume" type="range" min="0" max="1" step="0.05" value="'+state.voiceVolume+'"></label><button class="full-button" id="previewAiVoice" type="button">♫ Preview selected AI voice</button><button class="full-button" id="quickDialogueTts" type="button">⚡ Instant browser preview</button><button class="full-button" id="speakDialogue">▶ Generate AI voice</button><p class="muted-copy">Instant preview uses your browser voice. Kokoro generates the AI narration for export; mouth movement follows Kokoro audio.</p></div>'+
       '<div class="inspector-section"><div class="section-title">LOOK & FEEL</div>'+field('Character colour','charColor',c.color,'color')+
       '<label class="field"><span>Expression</span><div class="choice-row">'+['happy','surprised','curious','sad','angry','neutral'].map(x=>'<button class="choice '+(c.expression===x?'active':'')+'" data-expression="'+x+'">'+x[0].toUpperCase()+x.slice(1)+'</button>').join('')+'</div></label>'+
       '<label class="field"><span>Character size</span><input id="charSize" type="number" step="any" inputmode="decimal" value="'+c.size+'"></label>'+
@@ -945,9 +953,10 @@ if($('addMesh'))$('addMesh').onclick=()=>{if(state.meshObjects.length>=100){toas
     bind('speechText',v=>state.character.speech=v);bind('ttsText',v=>{state.character.ttsText=v;state.voiceBuffer=null;state.voiceText='';});bind('charColor',v=>state.character.color=v);bind('charSize',v=>{const n=Number(v);if(Number.isFinite(n)&&n>0)state.character.size=n;});bind('charX',v=>{const n=Number(v);if(Number.isFinite(n))state.character.x=n;});
     bind('sceneName',v=>selectedScene().name=v);
     bind('sceneTtsText',v=>{selectedScene().ttsText=v;});
+    if($('previewAiVoice'))$('previewAiVoice').onclick=previewSelectedAiVoice;
     if($('quickDialogueTts'))$('quickDialogueTts').onclick=()=>playQuickSpeech(state.character.ttsText,'quickDialogueTts');
     if($('quickSceneTts'))$('quickSceneTts').onclick=()=>playQuickSpeech(selectedScene().ttsText,'quickSceneTts');
-    if($('speakSceneTts'))$('speakSceneTts').onclick=async()=>{const text=String(selectedScene().ttsText||'').trim();if(!text){toast('Add narration for this scene first');return;}const button=$('speakSceneTts');button.disabled=true;button.textContent='Generating…';try{const buffer=await generateVoice(text);if(buffer)await playVoiceBuffer(buffer);}catch(error){console.error('Scene TTS:',error);toast('Scene voice failed: '+(error.message||'check your connection'));}finally{button.disabled=false;button.textContent='▶ Generate + speak this scene';}};
+    if($('speakSceneTts'))$('speakSceneTts').onclick=async()=>{if(state.voiceSource&&state.voiceButtonId==='speakSceneTts'){stopLipSync();return;}const text=String(selectedScene().ttsText||'').trim();if(!text){toast('Add narration for this scene first');return;}const button=$('speakSceneTts');button.disabled=true;button.textContent='Generating…';try{const buffer=await generateVoice(text);if(buffer)await playVoiceBuffer(buffer,'speakSceneTts');}catch(error){console.error('Scene TTS:',error);toast('Scene voice failed: '+(error.message||'check your connection'));}finally{button.disabled=false;button.textContent='▶ Generate + speak this scene';}};
     if($('sceneBg'))$('sceneBg').onchange=e=>{const scene=selectedScene();scene.background=e.target.value;scene.backgroundType='preset';scene.backgroundImage='';if(e.target.value==='withering-forest'){scene.title='YES, ALL LIFE.';scene.subtitle='Trees are life.';}draw();scheduleSave();};
     if($('backgroundType'))$('backgroundType').onchange=e=>{const scene=selectedScene();scene.backgroundType=e.target.value;if(e.target.value!=='image')scene.backgroundImage='';draw();scheduleSave();renderInspector();};
     ['backgroundColor','backgroundColor2'].forEach((id,i)=>{const el=$(id);if(el)el.oninput=()=>{const scene=selectedScene();if(scene.backgroundType!=='solid')scene.backgroundType='gradient';scene[i?'backgroundColor2':'backgroundColor']=el.value;draw();scheduleSave();};});
